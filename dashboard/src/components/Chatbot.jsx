@@ -2,13 +2,16 @@
  * NetShield AI — AI Chatbot panel component.
  *
  * Slide-out panel with chat bubbles for the Gemini-powered security
- * assistant. Includes quick-action buttons and a typing indicator.
+ * assistant. Bot messages are rendered as Markdown with proper
+ * formatting (bold, lists, headers, spacing). Includes quick-action
+ * buttons and a typing indicator.
  *
  * @module components/Chatbot
  */
 
-import { useState, useRef, useEffect } from 'react'
-import { MessageSquare, X, Send, Bot, User } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { MessageSquare, X, Send, Bot, User, AlertTriangle, Shield, Activity, Search } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { sendChatbotQuery, getChatbotStatus } from '../api/client.js'
 
 const QUICK_ACTIONS = [
@@ -18,17 +21,63 @@ const QUICK_ACTIONS = [
   'Show top attacker IPs',
 ]
 
+/**
+ * Lightweight Markdown renderer for bot messages.
+ * Applies proper formatting: bold for key info, styled lists,
+ * proper spacing, and code formatting.
+ */
+function BotMessage({ content }) {
+  return (
+    <div className="bot-md">
+      <ReactMarkdown
+        components={{
+          // Bold text → cyan accent color + bold weight
+          strong: ({ children }) => (
+            <strong className="md-bold">{children}</strong>
+          ),
+          // Headers → smaller, accent-colored
+          h1: ({ children }) => <h1 className="md-h">{children}</h1>,
+          h2: ({ children }) => <h2 className="md-h">{children}</h2>,
+          h3: ({ children }) => <h3 className="md-h">{children}</h3>,
+          // Unordered lists → styled with custom bullets
+          ul: ({ children }) => <ul className="md-ul">{children}</ul>,
+          li: ({ children }) => <li className="md-li">{children}</li>,
+          // Ordered lists
+          ol: ({ children }) => <ol className="md-ol">{children}</ol>,
+          // Paragraphs → proper spacing
+          p: ({ children }) => <p className="md-p">{children}</p>,
+          // Inline code
+          code: ({ children }) => <code className="md-code">{children}</code>,
+          // Block code
+          pre: ({ children }) => <pre className="md-pre">{children}</pre>,
+          // Links
+          a: ({ href, children }) => (
+            <a className="md-link" href={href} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          ),
+          // Horizontal rules
+          hr: () => <hr className="md-hr" />,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
 export default function Chatbot() {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState([
     {
       role: 'bot',
-      text: 'Hello! I am the NetShield AI assistant. Ask me about current threats, attack types, or network security.',
+      text: 'Hello! I am the **NetShield AI** assistant. Ask me about current threats, attack types, or network security.',
       time: new Date(),
     },
   ])
   const [input, setInput] = useState('')
   const [typing, setTyping] = useState(false)
+  const [botStatus, setBotStatus] = useState({ available: true, model: '' })
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -44,6 +93,14 @@ export default function Chatbot() {
     if (open && inputRef.current) {
       inputRef.current.focus()
     }
+  }, [open])
+
+  // Fetch chatbot status on open
+  useEffect(() => {
+    if (!open) return
+    getChatbotStatus()
+      .then((data) => setBotStatus(data))
+      .catch(() => setBotStatus({ available: false, model: '' }))
   }, [open])
 
   // Keyboard shortcut: Ctrl+K (or Cmd+K on Mac) toggles the chat panel
@@ -114,6 +171,9 @@ export default function Chatbot() {
           <div className="chat-panel-title">
             <Bot size={18} style={{ color: 'var(--accent-cyan)' }} />
             <span>NetShield Assistant</span>
+            {botStatus.available && botStatus.model && (
+              <span className="model-badge">{botStatus.model.replace('models/', '')}</span>
+            )}
           </div>
           <button className="chat-close" onClick={() => setOpen(false)}>
             <X size={18} />
@@ -126,7 +186,11 @@ export default function Chatbot() {
               <div className={`msg-bubble ${msg.role === 'user' ? 'msg-bubble-user' : 'msg-bubble-bot'}`}>
                 {msg.role === 'bot' && <Bot size={14} className="msg-icon" />}
                 {msg.role === 'user' && <User size={14} className="msg-icon" />}
-                <span className="msg-text">{msg.text}</span>
+                {msg.role === 'bot' ? (
+                  <BotMessage content={msg.text} />
+                ) : (
+                  <span className="msg-text">{msg.text}</span>
+                )}
               </div>
               <span className="msg-time text-faint mono">{formatMsgTime(msg.time)}</span>
             </div>
@@ -172,6 +236,7 @@ export default function Chatbot() {
       {open && <div className="chat-backdrop" onClick={() => setOpen(false)} />}
 
       <style>{`
+        /* ── FAB button ── */
         .chat-fab {
           position: fixed;
           bottom: 24px;
@@ -224,6 +289,7 @@ export default function Chatbot() {
           100% { opacity: 0; transform: scale(1.4); }
         }
 
+        /* ── Backdrop ── */
         .chat-backdrop {
           position: fixed;
           inset: 0;
@@ -231,11 +297,12 @@ export default function Chatbot() {
           z-index: 290;
         }
 
+        /* ── Panel ── */
         .chat-panel {
           position: fixed;
           top: 0;
           right: 0;
-          width: 380px;
+          width: 400px;
           max-width: 100vw;
           height: 100vh;
           background: var(--bg-secondary);
@@ -251,13 +318,15 @@ export default function Chatbot() {
           animation: slide-in-right 0.3s ease;
         }
 
+        /* ── Header ── */
         .chat-panel-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 16px;
+          padding: 14px 16px;
           border-bottom: 1px solid var(--border-default);
           flex-shrink: 0;
+          background: var(--bg-primary);
         }
         .chat-panel-title {
           display: flex;
@@ -265,6 +334,16 @@ export default function Chatbot() {
           gap: 8px;
           font-weight: 600;
           font-size: 0.95rem;
+        }
+        .model-badge {
+          font-size: 0.6rem;
+          font-weight: 500;
+          padding: 2px 7px;
+          border-radius: 10px;
+          background: rgba(0,240,255,0.1);
+          border: 1px solid rgba(0,240,255,0.25);
+          color: var(--accent-cyan);
+          letter-spacing: 0.3px;
         }
         .chat-close {
           background: none;
@@ -281,6 +360,7 @@ export default function Chatbot() {
           color: var(--text-primary);
         }
 
+        /* ── Messages area ── */
         .chat-messages {
           flex: 1;
           overflow-y: auto;
@@ -293,7 +373,7 @@ export default function Chatbot() {
           display: flex;
           flex-direction: column;
           gap: 3px;
-          max-width: 85%;
+          max-width: 88%;
         }
         .msg-row-bot { align-self: flex-start; }
         .msg-row-user { align-self: flex-end; }
@@ -301,10 +381,10 @@ export default function Chatbot() {
           display: flex;
           align-items: flex-start;
           gap: 6px;
-          padding: 10px 14px;
+          padding: 12px 14px;
           border-radius: 14px;
           font-size: 0.85rem;
-          line-height: 1.4;
+          line-height: 1.5;
         }
         .msg-bubble-bot {
           background: var(--bg-tertiary);
@@ -319,7 +399,7 @@ export default function Chatbot() {
         }
         .msg-icon {
           flex-shrink: 0;
-          margin-top: 2px;
+          margin-top: 3px;
           color: var(--text-secondary);
         }
         .msg-time {
@@ -335,6 +415,135 @@ export default function Chatbot() {
           animation: typing-dot 1.4s infinite;
         }
 
+        /* ── Markdown styles for bot messages ── */
+        .bot-md {
+          overflow-wrap: break-word;
+          word-break: break-word;
+        }
+
+        /* Bold — accent cyan + heavier weight */
+        .md-bold {
+          color: var(--accent-cyan);
+          font-weight: 700;
+        }
+
+        /* Headers */
+        .md-h {
+          color: var(--accent-cyan);
+          font-weight: 700;
+          margin: 10px 0 6px 0;
+          line-height: 1.3;
+        }
+        .bot-md h1 { font-size: 1.05rem; }
+        .bot-md h2 { font-size: 0.95rem; }
+        .bot-md h3 { font-size: 0.88rem; }
+        .bot-md h1:first-child,
+        .bot-md h2:first-child,
+        .bot-md h3:first-child {
+          margin-top: 0;
+        }
+
+        /* Paragraphs */
+        .md-p {
+          margin: 6px 0;
+          line-height: 1.55;
+        }
+        .md-p:first-child {
+          margin-top: 0;
+        }
+        .md-p:last-child {
+          margin-bottom: 0;
+        }
+
+        /* Unordered lists */
+        .md-ul {
+          margin: 6px 0;
+          padding-left: 18px;
+          list-style: none;
+        }
+        .md-li {
+          margin: 4px 0;
+          padding-left: 4px;
+          line-height: 1.5;
+          position: relative;
+        }
+        .md-ul .md-li::before {
+          content: '▸';
+          position: absolute;
+          left: -14px;
+          color: var(--accent-cyan);
+          font-size: 0.7rem;
+          top: 3px;
+        }
+
+        /* Ordered lists */
+        .md-ol {
+          margin: 6px 0;
+          padding-left: 20px;
+          counter-reset: md-ol-counter;
+          list-style: none;
+        }
+        .md-ol .md-li {
+          counter-increment: md-ol-counter;
+        }
+        .md-ol .md-li::before {
+          content: counter(md-ol-counter) '.';
+          position: absolute;
+          left: -18px;
+          color: var(--accent-cyan);
+          font-weight: 600;
+          font-size: 0.8rem;
+          top: 2px;
+        }
+
+        /* Inline code */
+        .md-code {
+          background: rgba(0,240,255,0.08);
+          border: 1px solid rgba(0,240,255,0.15);
+          border-radius: 4px;
+          padding: 1px 5px;
+          font-size: 0.8rem;
+          font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+          color: var(--accent-cyan);
+        }
+
+        /* Block code */
+        .md-pre {
+          background: rgba(0,0,0,0.3);
+          border: 1px solid var(--border-default);
+          border-radius: 6px;
+          padding: 10px 12px;
+          margin: 8px 0;
+          overflow-x: auto;
+          font-size: 0.78rem;
+          line-height: 1.4;
+        }
+        .md-pre code {
+          background: none;
+          border: none;
+          padding: 0;
+          font-size: inherit;
+          color: var(--text-primary);
+        }
+
+        /* Links */
+        .md-link {
+          color: var(--accent-cyan);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .md-link:hover {
+          opacity: 0.85;
+        }
+
+        /* Horizontal rule */
+        .md-hr {
+          border: none;
+          border-top: 1px solid var(--border-default);
+          margin: 10px 0;
+        }
+
+        /* ── Quick actions ── */
         .chat-quick-actions {
           display: flex;
           flex-wrap: wrap;
@@ -363,6 +572,7 @@ export default function Chatbot() {
           cursor: not-allowed;
         }
 
+        /* ── Input row ── */
         .chat-input-row {
           display: flex;
           gap: 8px;
