@@ -4,13 +4,21 @@ Uses Google's Generative AI (Gemini) to answer user questions about
 the current security state of the system.  The system prompt is
 dynamically enriched with live database context (threat level,
 recent attacks, top attackers, attack distribution).
+
+Rate-limit handling:
+    If the primary model hits a 429 (quota exceeded), the chatbot
+    automatically falls back to the next model in the priority list.
+    If ALL models are rate-limited, a user-friendly message is
+    returned instead of the raw API error.
 """
 
 from __future__ import annotations
 
 import logging
+import re
+import time
 import warnings
-from typing import Any
+from typing import Any, Optional
 
 from database import Database
 from prediction.schemas import PredictionResult  # noqa: F401 — re-exported convenience
@@ -31,9 +39,20 @@ _FALLBACK_NO_KEY = (
     "Please set the GEMINI_API_KEY environment variable and restart the server."
 )
 
+_FALLBACK_RATE_LIMITED = (
+    "I'm currently experiencing high demand and my API quota has been "
+    "temporarily reached. Please try again in a minute or two. "
+    "Your network is still being monitored — only the chatbot is affected."
+)
+
+_FALLBACK_MODEL_ERROR = (
+    "The AI model could not generate a response right now. "
+    "Please try again shortly. Your network monitoring is unaffected."
+)
+
 # Models to try in order — the first that WORKS wins.
-# We verify with a tiny generate_content call, not just instantiation,
-# because some models initialise but then hang/timeout on generation.
+# If a model hits a 429 rate limit during a query, we fall back
+# to the next one automatically.
 _GEMINI_MODELS: list[str] = [
     "gemini-3.6-flash",
     "gemini-3.5-flash",
@@ -43,6 +62,30 @@ _GEMINI_MODELS: list[str] = [
     "gemini-flash-lite-latest",
     "gemini-2.5-flash",
 ]
+
+# Regex to detect 429 / quota-exceeded errors from the Gemini SDK.
+_RATE_LIMIT_PATTERN = re.compile(r"429|quota.*exceeded|rate.*limit|RESOURCE_EXHAUSTED", re.IGNORECASE)
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Check whether an exception is a Gemini rate-limit / quota error.
+
+    Args:
+        exc: The caught exception.
+
+    Returns:
+        ``True`` if the error indicates a 429 / quota / rate-limit.
+    """
+    msg = str(exc)
+    if _RATE_LIMIT_PATTERN.search(msg):
+        return True
+    # The google-generativeai SDK raises google.api_core.exceptions.ResourceExhausted
+    # which has a .code attribute or is a subclass we can detect.
+    exc_type = type(exc).__name__.lower()
+    if "resourceexhausted" in exc_type or "rate" in exc_type:
+        return True
+    return False
+
 
 _SYSTEM_PROMPT_TEMPLATE = (
     "You are NetShield AI, a cybersecurity assistant for an "
@@ -70,8 +113,9 @@ class Chatbot:
     """AI chatbot backed by Google Gemini with live database context.
 
     Tries multiple Gemini model names in case the preferred model
-    has been deprecated or renamed by Google.  The first model that
-    initialises successfully is used.
+    has been deprecated, renamed, or rate-limited by Google.
+    The first model that initialises successfully is used as primary.
+    If it hits a 429 during a query, the next model is tried.
 
     Args:
         api_key: Google Gemini API key. Empty string disables AI responses.
@@ -82,8 +126,10 @@ class Chatbot:
         """Initialize the chatbot.
 
         Attempts to configure the Gemini API and instantiate a
-        GenerativeModel.  If all model names fail, ``self._model``
-        remains ``None`` and :meth:`query` returns a fallback message.
+        GenerativeModel for each model name in priority order.
+        The first model that successfully responds to a tiny probe
+        becomes the primary.  All working models are kept in a pool
+        so we can fall back if the primary is rate-limited.
 
         Args:
             api_key: Google Gemini API key.
@@ -91,8 +137,9 @@ class Chatbot:
         """
         self._api_key: str = api_key
         self._database: Database = database
-        self._model: Any = None
-        self._model_name: str = ""
+        self._models: list[Any] = []
+        self._model_names: list[str] = []
+        self._primary_index: int = -1
         self._used_fallback: bool = False
 
         if not api_key:
@@ -104,58 +151,64 @@ class Chatbot:
 
             genai.configure(api_key=api_key)
 
-            # Try each model name until one works.
-            # We instantiate AND do a tiny generate_content probe
-            # because some models (e.g. gemini-3.7-flash) instantiate
-            # fine but then hang indefinitely on actual generation.
+            # Probe each model — keep all that work, not just the first.
             for model_name in _GEMINI_MODELS:
                 try:
                     candidate = genai.GenerativeModel(model_name)
-                    # Verification probe: 1-word generation with a short timeout.
-                    # If this fails or times out, the model is not usable.
                     _probe = candidate.generate_content("Hi")
-                    # If we get here, the model works.
-                    self._model = candidate
-                    self._model_name = model_name
-                    logger.info(
-                        "Gemini chatbot initialized with model: %s",
-                        model_name,
-                    )
-                    break
+                    self._models.append(candidate)
+                    self._model_names.append(model_name)
+                    logger.info("Model %s: OK", model_name)
                 except Exception as model_exc:  # noqa: BLE001
-                    logger.debug(
-                        "Model %s unavailable: %s — trying next.",
+                    is_rl = _is_rate_limit_error(model_exc)
+                    level = logging.WARNING if is_rl else logging.DEBUG
+                    logger.log(
+                        level,
+                        "Model %s %s: %s",
                         model_name,
+                        "rate-limited" if is_rl else "unavailable",
                         model_exc,
                     )
+                    # If rate-limited, still add it to the pool — it may
+                    # become available later.
+                    if is_rl:
+                        self._models.append(candidate)
+                        self._model_names.append(model_name)
                     continue
 
-            if self._model is None:
+            if self._models:
+                self._primary_index = 0
+                logger.info(
+                    "Gemini chatbot initialized — primary: %s (%d model(s) in pool)",
+                    self._model_names[0],
+                    len(self._models),
+                )
+            else:
                 logger.error(
                     "All Gemini model names failed. "
                     "Chatbot will use fallback responses."
                 )
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to initialize Gemini: %s", exc)
-            self._model = None
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def is_available(self) -> bool:
-        """Check whether the Gemini model is ready to serve queries.
+        """Check whether at least one Gemini model is ready to serve queries.
 
         Returns:
-            ``True`` if an API key is set AND the model initialised
-            successfully, ``False`` otherwise.
+            ``True`` if an API key is set AND at least one model is in the pool.
         """
-        return bool(self._api_key and self._model is not None)
+        return bool(self._api_key and self._models)
 
     @property
     def model_name(self) -> str:
         """Return the Gemini model name in use (empty if not initialised)."""
-        return self._model_name
+        if self._primary_index >= 0 and self._primary_index < len(self._model_names):
+            return self._model_names[self._primary_index]
+        return ""
 
     @property
     def api_key_configured(self) -> bool:
@@ -165,10 +218,14 @@ class Chatbot:
     def query(self, user_message: str) -> str:
         """Answer a user question using Gemini with live DB context.
 
+        Tries the primary model first.  If it returns a 429 (rate limit),
+        automatically falls back to the next model in the pool.
+        If ALL models are rate-limited, returns a user-friendly message
+        instead of the raw API error.
+
         Falls back to a static message when:
         - The API key is empty.
-        - The Gemini model failed to initialize.
-        - The API call raises an exception.
+        - No models are in the pool.
 
         Args:
             user_message: The user's question or message.
@@ -179,21 +236,35 @@ class Chatbot:
         if not self._api_key:
             return _FALLBACK_NO_KEY
 
-        if not self._model:
-            return (
-                "The Gemini model could not be initialized. "
-                "Please check the API key and network connection."
-            )
+        if not self._models:
+            return _FALLBACK_MODEL_ERROR
 
         system_prompt = self._build_system_prompt()
+        full_prompt = f"{system_prompt}\n\nUser Question: {user_message}"
 
-        try:
-            full_prompt = f"{system_prompt}\n\nUser Question: {user_message}"
-            response = self._model.generate_content(full_prompt)
-            return response.text if response.text else "I could not generate a response."
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Gemini API error: %s", exc)
-            return f"Sorry, I encountered an error while processing your request: {exc}"
+        # Try each model in the pool; skip rate-limited ones.
+        for i, model in enumerate(self._models):
+            model_name = self._model_names[i] if i < len(self._model_names) else f"model-{i}"
+            try:
+                response = model.generate_content(full_prompt)
+                if response.text:
+                    logger.info("Chatbot responded via %s", model_name)
+                    return response.text
+                # Empty response — try next model
+                logger.warning("Model %s returned empty response, trying next.", model_name)
+            except Exception as exc:  # noqa: BLE001
+                if _is_rate_limit_error(exc):
+                    logger.warning(
+                        "Model %s rate-limited, trying next model.", model_name
+                    )
+                    continue
+                # Non-rate-limit error (e.g. 500, network) — try next model
+                logger.error("Model %s error: %s — trying next.", model_name, exc)
+                continue
+
+        # All models exhausted
+        logger.warning("All Gemini models rate-limited or failed.")
+        return _FALLBACK_RATE_LIMITED
 
     # ------------------------------------------------------------------
     # Helpers
