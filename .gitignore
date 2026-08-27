@@ -1,0 +1,48 @@
+# Datasets (too large for git)
+CICIDS2017/*.csv
+NSL-KDD/*
+UNSW-NB15/*
+dataset/processed/*.npy
+dataset/processed/*.csv
+dataset/processed/*.parquet
+dataset/processed/v3/*.npy
+dataset/processed/v3/*.csv
+dataset/processed/v3/*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# ML models (large binary files)
+python-engine/models/*.pkl
+python-engine/models/v3/*.pkl
+
+# Database (binary, changes frequently)
+python-engine/netshield.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node.js
+node_modules/
+
+# Reports (generated)
+reports/*.pdf
+python-engine/reports/*.pdf
+
+# Environment
+.env
+
+
+# OS
+Thumbs.db
+.DS_Store

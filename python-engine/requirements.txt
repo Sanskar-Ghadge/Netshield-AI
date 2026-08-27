@@ -1,0 +1,45 @@
+# ============================================================
+# NetShield AI — Python Engine Dependencies
+# ============================================================
+
+# --- ML & Data Processing ---
+pandas==2.2.*
+numpy==1.26.*
+scikit-learn==1.5.*
+xgboost==2.1.*
+joblib==1.4.*
+imbalanced-learn==0.12.*
+
+# --- Deep Learning (optional, for MLP) ---
+# scikit-learn's MLPClassifier is used instead — no extra dep
+
+# --- Packet Capture ---
+scapy==2.5.*
+
+# --- Backend Server ---
+fastapi==0.111.*
+uvicorn==0.30.*
+websockets==12.*
+python-multipart==0.0.*
+pydantic-settings==2.3.*
+
+# --- Alerts ---
+pyttsx3==2.90
+requests==2.32.*
+
+# --- PDF Reports ---
+reportlab==4.2.*
+
+# --- AI Chatbot ---
+google-generativeai==0.7.*
+
+# --- Utilities ---
+python-dotenv==1.0.*
+
+# --- Jupyter (for training notebook) ---
+jupyter==1.0.*
+matplotlib==3.9.*
+seaborn==0.13.*
+
+# --- HTTP client (for Node.js bridge communication) ---
+httpx==0.27.*

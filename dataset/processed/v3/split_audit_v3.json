@@ -1,0 +1,44 @@
+{
+  "test_files": {
+    "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv": 44796,
+    "Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv": 42350,
+    "Friday-WorkingHours-Morning.pcap_ISCX.csv": 35990,
+    "Monday-WorkingHours.pcap_ISCX.csv": 100508,
+    "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv": 49241,
+    "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv": 31353,
+    "Tuesday-WorkingHours.pcap_ISCX.csv": 81788,
+    "Wednesday-workingHours.pcap_ISCX.csv": 118168
+  },
+  "test_labels": {
+    "BENIGN": 419158,
+    "Bot": 391,
+    "BruteForce": 1830,
+    "DDoS": 25603,
+    "DoS": 38723,
+    "Heartbleed": 2,
+    "Infiltration": 7,
+    "PortScan": 18051,
+    "WebAttack": 429
+  },
+  "train_files": {
+    "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv": 178308,
+    "Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv": 169669,
+    "Friday-WorkingHours-Morning.pcap_ISCX.csv": 144193,
+    "Monday-WorkingHours.pcap_ISCX.csv": 402277,
+    "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv": 196184,
+    "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv": 125328,
+    "Tuesday-WorkingHours.pcap_ISCX.csv": 328381,
+    "Wednesday-workingHours.pcap_ISCX.csv": 472432
+  },
+  "train_labels": {
+    "BENIGN": 1676628,
+    "Bot": 1562,
+    "BruteForce": 7322,
+    "DDoS": 102410,
+    "DoS": 154894,
+    "Heartbleed": 9,
+    "Infiltration": 29,
+    "PortScan": 72204,
+    "WebAttack": 1714
+  }
+}

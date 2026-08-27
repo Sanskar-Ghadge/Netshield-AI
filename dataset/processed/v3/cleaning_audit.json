@@ -1,0 +1,38 @@
+{
+  "all_zero_columns_observed": [
+    "Bwd Avg Bulk Rate",
+    "Bwd Avg Bytes/Bulk",
+    "Bwd Avg Packets/Bulk",
+    "Bwd PSH Flags",
+    "Bwd URG Flags",
+    "Fwd Avg Bulk Rate",
+    "Fwd Avg Bytes/Bulk",
+    "Fwd Avg Packets/Bulk"
+  ],
+  "conflicting_feature_rows_removed": 1396,
+  "duplicate_feature_columns_removed": [
+    "Fwd Header Length.1",
+    "Subflow Fwd Packets",
+    "Subflow Bwd Packets"
+  ],
+  "exact_duplicates_removed": 308381,
+  "infinite_values_replaced": 4376,
+  "invalid_negative_values_replaced": 3545,
+  "invalid_ports_replaced": 0,
+  "missing_label_rows_removed": 0,
+  "numeric_parse_failures": 0,
+  "output_label_counts": {
+    "BENIGN": 2095786,
+    "Bot": 1953,
+    "BruteForce": 9152,
+    "DDoS": 128013,
+    "DoS": 193617,
+    "Heartbleed": 11,
+    "Infiltration": 36,
+    "PortScan": 90255,
+    "WebAttack": 2143
+  },
+  "output_rows": 2520966,
+  "raw_rows": 2830743,
+  "version": 3
+}

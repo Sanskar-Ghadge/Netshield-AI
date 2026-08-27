@@ -1,0 +1,33 @@
+{
+  "BENIGN": [
+    "friday",
+    "monday",
+    "thursday",
+    "tuesday",
+    "wednesday"
+  ],
+  "Bot": [
+    "friday"
+  ],
+  "BruteForce": [
+    "tuesday"
+  ],
+  "DDoS": [
+    "friday"
+  ],
+  "DoS": [
+    "wednesday"
+  ],
+  "Heartbleed": [
+    "wednesday"
+  ],
+  "Infiltration": [
+    "thursday"
+  ],
+  "PortScan": [
+    "friday"
+  ],
+  "WebAttack": [
+    "thursday"
+  ]
+}
