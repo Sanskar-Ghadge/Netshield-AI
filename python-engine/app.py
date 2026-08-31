@@ -321,10 +321,13 @@ def _prediction_loop(state: "AppState") -> None:
             else:
                 result = state.adapter.predict(flow)
 
-            # ── Step 3: Confidence threshold ──────────────────────────
+            # ── Step 3: Confidence threshold + rule-based detection ────
             # Downgrade low-confidence attack predictions to BENIGN.
+            # Also run rule-based detection for patterns the ML model
+            # misses (e.g. SYN floods with no backward packets).
             result = should_flag_as_attack(
-                result, state.attack_confidence_threshold
+                result, state.attack_confidence_threshold,
+                raw_features=dict(flow.features) if flow.features else None,
             )
 
             # ── Step 4: Log, broadcast, alert ─────────────────────────

@@ -10,14 +10,23 @@ Capacity: 100,000 flows.  When full, the flow with the oldest
 
 from __future__ import annotations
 
+import logging
 import threading
 from typing import Optional
 
 from packet_capture.flow import FlowAccumulator
 from packet_capture.schemas import FlowKey, FlowResult, FlowState, PacketRecord
 
+logger = logging.getLogger(__name__)
+
 _MAX_FLOWS: int = 100_000
 _IDLE_TIMEOUT_US: float = 120_000_000.0  # 2 minutes in microseconds
+
+# Short timeout for half-open SYN-only flows (no backward traffic).
+# These are typical of DDoS, port scans, and brute-force attacks.
+# A 5-second idle window is enough to detect them without waiting
+# for the full idle timeout.
+_SYN_IDLE_TIMEOUT_US: float = 5_000_000.0  # 5 seconds
 
 
 class FlowTable:
@@ -84,6 +93,9 @@ class FlowTable:
     ) -> list[FlowResult]:
         """Evict flows that have been idle for longer than *idle_timeout_us*.
 
+        Also evicts half-open SYN-only flows (forward packets only,
+        no backward, no FIN/RST) that have been idle for 5 seconds.
+
         Args:
             current_time_us: Current wall-clock time in microseconds.
             idle_timeout_us: Maximum allowed idle duration in microseconds.
@@ -94,11 +106,16 @@ class FlowTable:
         results: list[FlowResult] = []
 
         with self._lock:
-            expired_keys = [
-                k
-                for k, (acc, _) in self._table.items()
-                if (current_time_us - acc.last_packet_time) > idle_timeout_us
-            ]
+            expired_keys = []
+            for k, (acc, _) in self._table.items():
+                idle_us = current_time_us - acc.last_packet_time
+                # Full idle timeout
+                if idle_us > idle_timeout_us:
+                    expired_keys.append(k)
+                # Fast eviction: half-open SYN-only flows after 5s idle
+                elif idle_us > _SYN_IDLE_TIMEOUT_US and acc.is_half_open:
+                    expired_keys.append(k)
+
             expired_items = []
             for k in expired_keys:
                 expired_items.append(self._table.pop(k))
@@ -109,6 +126,13 @@ class FlowTable:
                 result.state = FlowState.TIMEOUT
                 result.context = result.to_context_dict()
                 results.append(result)
+
+        if results:
+            logger.debug(
+                "Expired %d flow(s) (%d half-open SYN flows)",
+                len(results),
+                sum(1 for r in results if r.packet_count <= 3),
+            )
 
         return results
 

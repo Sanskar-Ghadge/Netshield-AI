@@ -291,6 +291,28 @@ class FlowAccumulator:
         return self._rst_seen or (self._fin_forward and self._fin_backward)
 
     @property
+    def is_half_open(self) -> bool:
+        """Return whether this is a half-open SYN-only flow (no backward traffic).
+
+        A half-open flow has:
+        - At least 1 forward packet
+        - Zero backward packets
+        - No RST or FIN flags
+        These are typical of SYN floods, port scans, and brute-force attacks
+        where the target never responds.
+
+        Returns:
+            ``True`` if the flow is half-open (forward-only, no teardown flags).
+        """
+        return (
+            len(self._fwd_ts) > 0
+            and len(self._bwd_ts) == 0
+            and not self._rst_seen
+            and not self._fin_forward
+            and not self._fin_backward
+        )
+
+    @property
     def last_packet_time(self) -> float:
         """Timestamp of the most recently ingested packet."""
         return self._all_ts[-1] if self._all_ts else 0.0

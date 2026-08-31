@@ -39,7 +39,7 @@ from packet_capture.schemas import (
     ReplayResult,
 )
 
-_EXPIRE_INTERVAL_S: float = 10.0
+_EXPIRE_INTERVAL_S: float = 2.0
 _IDLE_TIMEOUT_US: float = 120_000_000.0  # 2 minutes
 
 

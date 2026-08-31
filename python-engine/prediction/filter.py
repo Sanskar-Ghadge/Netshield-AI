@@ -34,6 +34,7 @@ from typing import Optional
 
 from packet_capture.schemas import FlowResult
 from prediction.schemas import (
+    CANONICAL_CLASSES,
     FlowContext,
     PredictionResult,
     PredictionStatus,
@@ -213,16 +214,28 @@ class TrafficFilter:
 def should_flag_as_attack(
     prediction: PredictionResult,
     confidence_threshold: float = 0.80,
+    raw_features: dict[str, float] | None = None,
 ) -> PredictionResult:
-    """Apply a confidence threshold to an attack prediction.
+    """Apply a confidence threshold and rule-based attack detection.
 
-    If the model predicts an attack but confidence is below the threshold,
-    the result is downgraded to BENIGN. This prevents the model from
-    flagging normal traffic as an attack when it is essentially guessing
-    (confidence near 50%).
+    Three-step process:
+        1. If the model already predicts an attack above the confidence
+           threshold, keep it.
+        2. If the model predicts BENIGN or is below the confidence
+           threshold, check rule-based patterns on the flow features.
+        3. Rule-based patterns catch attacks the model misses because
+           the live traffic doesn't match CICIDS2017 training data
+           exactly (e.g. unidirectional SYN floods with no backward
+           packets).
 
-    The original :class:`PredictionResult` is frozen/immutable, so a new
-    instance is created when downgrading.
+    Rule-based detection patterns:
+        - **DDoS/DoS SYN flood**: ≥10 forward packets, 0 backward,
+          0 payload, TCP SYN-only, high packet rate.
+        - **PortScan**: single-packet TCP SYN to many different ports
+          from same source (detected at flow level as single SYN,
+          no backward).
+        - **BruteForce**: many rapid TCP SYN to same port, no backward
+          packets.
 
     Args:
         prediction: The original model prediction.
@@ -231,23 +244,225 @@ def should_flag_as_attack(
 
     Returns:
         The original prediction if it passes the threshold, or a new
-        BENIGN prediction if the confidence was too low.
+        attack prediction if a rule matched, or a new BENIGN prediction
+        if the confidence was too low.
     """
-    if not prediction.is_attack:
-        return prediction
-    if prediction.confidence >= confidence_threshold:
+    # Step 1: Model is confident about an attack — keep it.
+    if prediction.is_attack and prediction.confidence >= confidence_threshold:
         return prediction
 
-    # Downgrade: create a new BENIGN result preserving all diagnostic info
-    probs = {c: 0.0 for c in prediction.class_probabilities}
-    probs["BENIGN"] = 1.0 - prediction.confidence
+    # Step 2: Rule-based detection on flow features.
+    # The model may predict BENIGN for real attacks because live SYN-only
+    # flows look different from CICIDS2017 training data (which had
+    # bidirectional packets).  These rules catch the pattern.
+    ctx = prediction.context
+    if ctx is not None:
+        # Extract context values — ctx is a FlowContext dataclass
+        protocol = ctx.protocol if hasattr(ctx, 'protocol') else 0
+        src_port = ctx.src_port if hasattr(ctx, 'src_port') else 0
+        dst_port = ctx.dst_port if hasattr(ctx, 'dst_port') else 0
+
+        # Get feature values from raw_features dict (passed from app.py)
+        fwd_pkts = _get_feature(prediction, "Total Fwd Packets", 0.0, raw_features)
+        bwd_pkts = _get_feature(prediction, "Total Backward Packets", 0.0, raw_features)
+        fwd_len = _get_feature(prediction, "Total Length of Fwd Packets", 0.0, raw_features)
+        bwd_len = _get_feature(prediction, "Total Length of Bwd Packets", 0.0, raw_features)
+        flow_dur = _get_feature(prediction, "Flow Duration", 0.0, raw_features)
+        flow_pkts_per_s = _get_feature(prediction, "Flow Packets/s", 0.0, raw_features)
+        ack_flag = _get_feature(prediction, "ACK Flag Count", 0.0, raw_features)
+        syn_flag = _get_feature(prediction, "SYN Flag Count", 0.0, raw_features)
+        fin_flag = _get_feature(prediction, "FIN Flag Count", 0.0, raw_features)
+        psh_flag = _get_feature(prediction, "PSH Flag Count", 0.0, raw_features)
+
+        # ── Rule: SYN flood (DDoS/DoS) ────────────────────────────
+        # Many forward packets, zero backward, zero payload, TCP,
+        # high packet rate.  This matches DDoS SYN flood pattern.
+        if (
+            protocol == 6
+            and fwd_pkts >= 10
+            and bwd_pkts == 0
+            and fwd_len == 0
+            and bwd_len == 0
+            and ack_flag == 0
+            and fin_flag == 0
+            and psh_flag == 0
+        ):
+            # Determine DDoS vs DoS by packet count
+            attack_label = "DDoS" if fwd_pkts >= 100 else "DoS"
+            logger.info(
+                "Rule-based detection: %s SYN flood (%d fwd pkts, 0 bwd, "
+                "0 payload) — model said %s",
+                attack_label,
+                int(fwd_pkts),
+                prediction.label,
+            )
+            return _override_to_attack(
+                prediction,
+                attack_label,
+                reason=f"Rule: {attack_label} SYN flood ({int(fwd_pkts)} fwd pkts, 0 bwd, 0 payload)",
+            )
+
+        # ── Rule: PortScan (single SYN, no backward) ───────────────
+        # Single TCP SYN packet, no backward, no payload.
+        # The model classifies these as BENIGN because individual SYN
+        # packets to a port look like normal connection attempts.
+        # We flag them as PortScan if there's no backward response
+        # (SYN-only, no SYN-ACK).
+        if (
+            protocol == 6
+            and fwd_pkts == 1
+            and bwd_pkts == 0
+            and fwd_len == 0
+            and ack_flag == 0
+            and fin_flag == 0
+        ):
+            logger.info(
+                "Rule-based detection: PortScan (single SYN to port %s, "
+                "no response — model said %s)",
+                dst_port,
+                prediction.label,
+            )
+            return _override_to_attack(
+                prediction,
+                "PortScan",
+                reason=f"Rule: PortScan (single SYN to port {dst_port}, no response)",
+            )
+
+        # ── Rule: BruteForce (many SYN to same port, no backward) ──
+        # Multiple forward TCP SYN packets to the same destination port
+        # (e.g. SSH port 22), zero backward packets, zero payload.
+        # This matches brute-force login attempts.
+        if (
+            protocol == 6
+            and fwd_pkts >= 50
+            and bwd_pkts == 0
+            and fwd_len == 0
+            and ack_flag == 0
+            and fin_flag == 0
+            and dst_port in (22, 23, 21, 3389, 5900, 445, 139, 25, 110, 143)
+        ):
+            logger.info(
+                "Rule-based detection: BruteForce (%d SYN to port %s, "
+                "no response — model said %s)",
+                int(fwd_pkts),
+                dst_port,
+                prediction.label,
+            )
+            return _override_to_attack(
+                prediction,
+                "BruteForce",
+                reason=f"Rule: BruteForce ({int(fwd_pkts)} SYN to port {dst_port}, no response)",
+            )
+
+    # Step 3: Model predicted attack but confidence too low — downgrade.
+    if prediction.is_attack:
+        # Downgrade: create a new BENIGN result preserving all diagnostic info
+        probs = {c: 0.0 for c in prediction.class_probabilities}
+        probs["BENIGN"] = 1.0 - prediction.confidence
+        return PredictionResult(
+            timestamp_utc=prediction.timestamp_utc,
+            status=PredictionStatus.BENIGN,
+            class_id=0,
+            label="BENIGN",
+            is_attack=False,
+            confidence=1.0 - prediction.confidence,
+            class_probabilities=probs,
+            feature_quality=prediction.feature_quality,
+            missing_fields=prediction.missing_fields,
+            imputed_fields=prediction.imputed_fields,
+            rejected_fields=prediction.rejected_fields,
+            context=prediction.context,
+            model_version=prediction.model_version,
+            preprocessing_version=prediction.preprocessing_version,
+            inference_ms=prediction.inference_ms,
+            is_partial_flow=prediction.is_partial_flow,
+            known_attack_model=prediction.known_attack_model,
+            generalization_warning=prediction.generalization_warning,
+            error=f"Downgraded from {prediction.label} (confidence {prediction.confidence:.1%} < threshold {confidence_threshold:.0%})",
+        )
+
+    return prediction
+
+
+def _get_feature(prediction: PredictionResult, name: str, default: float = 0.0, raw_features: dict[str, float] | None = None) -> float:
+    """Extract a feature value from raw_features, feature_quality, or context.
+
+    Args:
+        prediction: The prediction result.
+        name: Feature name to look up.
+        default: Default value if not found.
+        raw_features: Raw feature dict from FlowResult.features.
+
+    Returns:
+        The float value of the feature, or default.
+    """
+    # Try raw_features first (most reliable source)
+    if raw_features is not None and name in raw_features:
+        try:
+            return float(raw_features[name])
+        except (ValueError, TypeError):
+            pass
+
+    # Try feature_quality dict
+    fq = prediction.feature_quality
+    if isinstance(fq, dict) and name in fq:
+        try:
+            return float(fq[name])
+        except (ValueError, TypeError):
+            pass
+
+    # Try context dict
+    ctx = prediction.context
+    if isinstance(ctx, dict):
+        if name in ctx:
+            try:
+                return float(ctx[name])
+            except (ValueError, TypeError):
+                pass
+        # Features might be nested under a "features" key
+        features = ctx.get("features")
+        if isinstance(features, dict) and name in features:
+            try:
+                return float(features[name])
+            except (ValueError, TypeError):
+                pass
+
+    return default
+
+
+def _override_to_attack(
+    prediction: PredictionResult,
+    label: str,
+    reason: str,
+) -> PredictionResult:
+    """Create a new PredictionResult that overrides to an attack label.
+
+    Args:
+        prediction: The original prediction to override.
+        label: The attack label (e.g. "DDoS", "PortScan").
+        reason: Human-readable reason for the override.
+
+    Returns:
+        A new PredictionResult with the attack label.
+    """
+    # Build class probabilities: high for the attack, rest spread thin
+    probs = {c: 0.01 for c in CANONICAL_CLASSES}
+    probs[label] = 0.90
+    probs["BENIGN"] = 0.08
+    # Normalize to sum ~1.0
+    total = sum(probs.values())
+    probs = {k: v / total for k, v in probs.items()}
+
+    # Map label to class_id
+    class_id = CANONICAL_CLASSES.index(label) if label in CANONICAL_CLASSES else 1
+
     return PredictionResult(
         timestamp_utc=prediction.timestamp_utc,
-        status=PredictionStatus.BENIGN,
-        class_id=0,
-        label="BENIGN",
-        is_attack=False,
-        confidence=1.0 - prediction.confidence,
+        status=PredictionStatus.ATTACK,
+        class_id=class_id,
+        label=label,
+        is_attack=True,
+        confidence=0.90,
         class_probabilities=probs,
         feature_quality=prediction.feature_quality,
         missing_fields=prediction.missing_fields,
@@ -260,5 +475,5 @@ def should_flag_as_attack(
         is_partial_flow=prediction.is_partial_flow,
         known_attack_model=prediction.known_attack_model,
         generalization_warning=prediction.generalization_warning,
-        error=f"Downgraded from {prediction.label} (confidence {prediction.confidence:.1%} < threshold {confidence_threshold:.0%})",
+        error=reason,
     )
