@@ -1,5 +1,5 @@
 # ============================================================
-# NetShield AI — Stop All Servers (Windows PowerShell)
+# NetShield AI -- Stop All Servers (Windows PowerShell)
 # ============================================================
 # Kills all processes related to NetShield AI:
 #   - Python uvicorn (port 8000)
@@ -12,11 +12,11 @@
 
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Cyan
-Write-Host "  NetShield AI — Stopping All Servers" -ForegroundColor Cyan
+Write-Host "  NetShield AI -- Stopping All Servers" -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ── Kill processes by port ──────────────────────────────────
+# -- Kill processes by port ----------------------------------
 $Ports = @(8000, 3001, 5173)
 $Killed = 0
 
@@ -34,11 +34,11 @@ foreach ($port in $Ports) {
             }
         }
     } else {
-        Write-Host "  Port $port — nothing running" -ForegroundColor DarkGray
+        Write-Host "  Port $port -- nothing running" -ForegroundColor DarkGray
     }
 }
 
-# ── Also kill any stray uvicorn processes ────────────────────
+# -- Also kill any stray uvicorn processes --------------------
 $uvicorn = Get-Process -Name python -ErrorAction SilentlyContinue | Where-Object {
     $_.CommandLine -like "*uvicorn*" -or $_.MainWindowTitle -like "*NetShield*"
 }
@@ -48,7 +48,7 @@ foreach ($proc in $uvicorn) {
     $Killed++
 }
 
-# ── Also kill windows titled "NetShield" ───────────────────
+# -- Also kill windows titled "NetShield" -------------------
 $netshieldWindows = Get-Process | Where-Object { $_.MainWindowTitle -like "*NetShield*" }
 foreach ($proc in $netshieldWindows) {
     Write-Host "  Killing $($proc.ProcessName) PID $($proc.Id) ($($proc.MainWindowTitle))..." -ForegroundColor Yellow
@@ -56,7 +56,7 @@ foreach ($proc in $netshieldWindows) {
     $Killed++
 }
 
-# ── Summary ─────────────────────────────────────────────────
+# -- Summary -------------------------------------------------
 Write-Host ""
 if ($Killed -gt 0) {
     Write-Host "  Stopped $Killed process(es)." -ForegroundColor Green

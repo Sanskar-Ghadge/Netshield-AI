@@ -1,5 +1,5 @@
 # ============================================================
-# NetShield AI — Start All Servers (Windows PowerShell)
+# NetShield AI -- Start All Servers (Windows PowerShell)
 # ============================================================
 # Starts the three backend servers in separate windows:
 #   1. Python FastAPI engine  (port 8000)
@@ -19,40 +19,40 @@ $DashboardPath = Join-Path $ProjectRoot "dashboard"
 
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Cyan
-Write-Host "  NetShield AI — Starting All Servers" -ForegroundColor Cyan
+Write-Host "  NetShield AI -- Starting All Servers" -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ── 1. Start Python FastAPI Engine (port 8000) ─────────────
+# -- 1. Start Python FastAPI Engine (port 8000) -------------
 Write-Host "[1/3] Starting Python FastAPI engine on port 8000..." -ForegroundColor White
 
-$PythonCmd = "cd '$PythonEngine'; py -m uvicorn app:app --host 0.0.0.0 --port 8000"
-Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $PythonCmd -WindowTitle "NetShield — Python Engine"
+$PythonCmd = "`$host.UI.RawUI.WindowTitle = 'NetShield -- Python Engine'; cd '$PythonEngine'; .\.venv\Scripts\python.exe -m uvicorn app:app --host 0.0.0.0 --port 8000"
+Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $PythonCmd
 Write-Host "  Python engine starting..." -ForegroundColor Green
 
 # Wait for Python to load model and start
 Write-Host "  Waiting for model to load (8 seconds)..." -ForegroundColor DarkGray
 Start-Sleep -Seconds 8
 
-# ── 2. Start Node.js Backend (port 3001) ───────────────────
+# -- 2. Start Node.js Backend (port 3001) -------------------
 Write-Host "[2/3] Starting Node.js backend on port 3001..." -ForegroundColor White
 
-$NodeCmd = "cd '$ServerPath'; node src/index.js"
-Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $NodeCmd -WindowTitle "NetShield — Node.js Backend"
+$NodeCmd = "`$host.UI.RawUI.WindowTitle = 'NetShield -- Node.js Backend'; cd '$ServerPath'; node src/index.js"
+Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $NodeCmd
 Write-Host "  Node.js backend starting..." -ForegroundColor Green
 
 Start-Sleep -Seconds 3
 
-# ── 3. Start Vite React Dashboard (port 5173) ─────────────
+# -- 3. Start Vite React Dashboard (port 5173) -------------
 Write-Host "[3/3] Starting Vite React dashboard on port 5173..." -ForegroundColor White
 
-$ViteCmd = "cd '$DashboardPath'; npx vite --host"
-Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $ViteCmd -WindowTitle "NetShield — Dashboard"
+$ViteCmd = "`$host.UI.RawUI.WindowTitle = 'NetShield -- Dashboard'; cd '$DashboardPath'; npx vite --host"
+Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $ViteCmd
 Write-Host "  Vite dashboard starting..." -ForegroundColor Green
 
 Start-Sleep -Seconds 4
 
-# ── Done ────────────────────────────────────────────────────
+# -- Done ----------------------------------------------------
 Write-Host ""
 Write-Host "================================================" -ForegroundColor Green
 Write-Host "  All Servers Started!" -ForegroundColor Green
