@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import time
+from collections import defaultdict
 from typing import Optional
 
 from packet_capture.schemas import FlowResult
@@ -41,6 +43,61 @@ from prediction.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class PortScanTracker:
+    """Stateful tracker for multi-port scanning activity per source IP.
+
+    A PortScan attack is defined by a single source IP targeting multiple
+    distinct destination ports within a short time window (e.g., >= 5 distinct
+    ports within 10 seconds). Single-destination connection attempts (like Chrome
+    connecting repeatedly to port 443) only count as 1 distinct port and are
+    never flagged.
+    """
+
+    def __init__(self, time_window: float = 10.0, min_distinct_ports: int = 5) -> None:
+        self.time_window = time_window
+        self.min_distinct_ports = min_distinct_ports
+        self._history: dict[str, list[tuple[float, int]]] = defaultdict(list)
+
+    def record_and_check(self, src_ip: str, dst_port: int, timestamp: float | None = None) -> tuple[bool, int]:
+        """Record a port access and check if it exceeds the distinct port threshold.
+
+        Args:
+            src_ip: Source IP address string.
+            dst_port: Destination port number.
+            timestamp: Optional timestamp in seconds. Defaults to time.time().
+
+        Returns:
+            Tuple of (is_portscan: bool, distinct_port_count: int).
+        """
+        if not src_ip or dst_port <= 0:
+            return False, 0
+
+        now = timestamp if timestamp is not None else time.time()
+        cutoff = now - self.time_window
+
+        # Filter out records older than cutoff and append current access
+        records = [rec for rec in self._history[src_ip] if rec[0] >= cutoff]
+        records.append((now, dst_port))
+
+        # Limit history length per IP to prevent unbounded memory growth
+        if len(records) > 1000:
+            records = records[-1000:]
+
+        self._history[src_ip] = records
+
+        distinct_ports = {rec[1] for rec in records}
+        count = len(distinct_ports)
+        return count >= self.min_distinct_ports, count
+
+    def reset(self) -> None:
+        """Clear all tracked IP history."""
+        self._history.clear()
+
+
+_DEFAULT_PORT_SCAN_TRACKER = PortScanTracker()
+
 
 # ── Protocol numbers ──────────────────────────────────────────────
 _PROTO_TCP: int = 6
@@ -215,6 +272,7 @@ def should_flag_as_attack(
     prediction: PredictionResult,
     confidence_threshold: float = 0.80,
     raw_features: dict[str, float] | None = None,
+    port_scan_tracker: PortScanTracker | None = None,
 ) -> PredictionResult:
     """Apply a confidence threshold and rule-based attack detection.
 
@@ -231,9 +289,8 @@ def should_flag_as_attack(
     Rule-based detection patterns:
         - **DDoS/DoS SYN flood**: ≥10 forward packets, 0 backward,
           0 payload, TCP SYN-only, high packet rate.
-        - **PortScan**: single-packet TCP SYN to many different ports
-          from same source (detected at flow level as single SYN,
-          no backward).
+        - **PortScan**: single-packet/low-packet TCP SYN targeting ≥5
+          distinct ports from the same source IP in 10s.
         - **BruteForce**: many rapid TCP SYN to same port, no backward
           packets.
 
@@ -241,6 +298,8 @@ def should_flag_as_attack(
         prediction: The original model prediction.
         confidence_threshold: Minimum confidence required for an attack
             classification. Defaults to 0.80.
+        raw_features: Optional raw feature dictionary.
+        port_scan_tracker: Optional stateful PortScanTracker instance.
 
     Returns:
         The original prediction if it passes the threshold, or a new
@@ -257,10 +316,25 @@ def should_flag_as_attack(
     # bidirectional packets).  These rules catch the pattern.
     ctx = prediction.context
     if ctx is not None:
-        # Extract context values — ctx is a FlowContext dataclass
-        protocol = ctx.protocol if hasattr(ctx, 'protocol') else 0
-        src_port = ctx.src_port if hasattr(ctx, 'src_port') else 0
-        dst_port = ctx.dst_port if hasattr(ctx, 'dst_port') else 0
+        # Extract context values — ctx can be a FlowContext dataclass or dict
+        if isinstance(ctx, FlowContext):
+            protocol = ctx.protocol
+            src_ip = ctx.src_ip
+            dst_ip = ctx.dst_ip
+            src_port = ctx.src_port
+            dst_port = ctx.dst_port
+        elif isinstance(ctx, dict):
+            protocol = int(ctx.get("protocol", 0))
+            src_ip = str(ctx.get("src_ip", ""))
+            dst_ip = str(ctx.get("dst_ip", ""))
+            src_port = int(ctx.get("src_port", 0))
+            dst_port = int(ctx.get("dst_port", 0))
+        else:
+            protocol = getattr(ctx, 'protocol', 0)
+            src_ip = getattr(ctx, 'src_ip', '')
+            dst_ip = getattr(ctx, 'dst_ip', '')
+            src_port = getattr(ctx, 'src_port', 0)
+            dst_port = getattr(ctx, 'dst_port', 0)
 
         # Get feature values from raw_features dict (passed from app.py)
         fwd_pkts = _get_feature(prediction, "Total Fwd Packets", 0.0, raw_features)
@@ -273,6 +347,31 @@ def should_flag_as_attack(
         syn_flag = _get_feature(prediction, "SYN Flag Count", 0.0, raw_features)
         fin_flag = _get_feature(prediction, "FIN Flag Count", 0.0, raw_features)
         psh_flag = _get_feature(prediction, "PSH Flag Count", 0.0, raw_features)
+
+        # ── Rule: PortScan (multi-port scan from single source IP) ──────
+        # Single-packet or low-packet TCP SYN flows targeting multiple
+        # distinct destination ports within a short time window.
+        if (
+            protocol == 6
+            and src_ip
+            and dst_port > 0
+            and bwd_pkts <= 1
+            and fwd_pkts <= 5
+        ):
+            tracker = port_scan_tracker if port_scan_tracker is not None else _DEFAULT_PORT_SCAN_TRACKER
+            is_ps, distinct_count = tracker.record_and_check(src_ip, dst_port)
+            if is_ps:
+                logger.info(
+                    "Rule-based detection: PortScan from %s targeting %d distinct ports — model said %s",
+                    src_ip,
+                    distinct_count,
+                    prediction.label,
+                )
+                return _override_to_attack(
+                    prediction,
+                    "PortScan",
+                    reason=f"Rule: PortScan detected ({distinct_count} distinct ports targeted by {src_ip})",
+                )
 
         # ── Rule: SYN flood (DDoS/DoS) ────────────────────────────
         # Many forward packets, zero backward, zero payload, TCP,

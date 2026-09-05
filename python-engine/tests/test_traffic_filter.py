@@ -475,3 +475,68 @@ class TestBenignFactory:
         assert d["confidence"] == 1.0
         assert d["label"] == "BENIGN"
         assert d["error"] == "ICMP bypass"
+
+
+# ---------------------------------------------------------------------------
+# PortScanTracker & PortScan detection tests
+# ---------------------------------------------------------------------------
+
+class TestPortScanTracker:
+    """Tests for stateful PortScan detection."""
+
+    def test_single_port_access_not_flagged(self) -> None:
+        """Repeated access to port 443 (Chrome HTTPS) should NOT trigger PortScan."""
+        from prediction.filter import PortScanTracker
+        tracker = PortScanTracker(time_window=10.0, min_distinct_ports=5)
+        
+        # 10 access attempts to port 443 from same IP
+        for _ in range(10):
+            is_ps, count = tracker.record_and_check("192.168.1.50", 443)
+            assert is_ps is False
+            assert count == 1
+
+    def test_multi_port_access_flagged(self) -> None:
+        """Accessing >= 5 distinct ports should trigger PortScan."""
+        from prediction.filter import PortScanTracker
+        tracker = PortScanTracker(time_window=10.0, min_distinct_ports=5)
+
+        ports = [80, 443, 22, 21, 3389]
+        for idx, port in enumerate(ports):
+            is_ps, count = tracker.record_and_check("192.168.1.100", port)
+            if idx < 4:
+                assert is_ps is False
+                assert count == idx + 1
+            else:
+                assert is_ps is True
+                assert count == 5
+
+    def test_rule_based_portscan_override(self) -> None:
+        """should_flag_as_attack should override BENIGN to PortScan when distinct ports >= 5."""
+        from prediction.filter import PortScanTracker
+        tracker = PortScanTracker(time_window=10.0, min_distinct_ports=5)
+
+        for port in [1, 2, 3, 4, 5]:
+            ctx = FlowContext(
+                src_ip="192.168.1.100",
+                dst_ip="8.8.8.8",
+                src_port=54321,
+                dst_port=port,
+                protocol=6,
+            )
+            benign_pred = PredictionResult.benign(reason="test", context=ctx)
+            raw = {
+                "Total Fwd Packets": 1.0,
+                "Total Backward Packets": 0.0,
+            }
+            res = should_flag_as_attack(
+                benign_pred,
+                confidence_threshold=0.80,
+                raw_features=raw,
+                port_scan_tracker=tracker,
+            )
+            if port < 5:
+                assert res.is_attack is False
+            else:
+                assert res.is_attack is True
+                assert res.label == "PortScan"
+
