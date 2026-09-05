@@ -1,38 +1,27 @@
 /**
  * NetShield AI — Attack history table component.
  *
- * Sortable, filterable, paginated table of recent attacks. In compact mode
- * shows 5 rows for the dashboard; in full mode shows 20 rows per page
- * for the History page. Also supports CSV export of the current page.
+ * Sortable, filterable, paginated table of recent attack events.
  *
  * @module components/AttackHistory
  */
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Download, ShieldAlert } from 'lucide-react'
 import { useDashboard } from '../context/DashboardContext.jsx'
 import { getAttacks } from '../api/client.js'
 import { ATTACK_COLORS, FALLBACK_COLOR } from '../utils/constants.js'
 import { formatTime, formatConfidence, protocolName, formatEndpoint } from '../utils/format.js'
 
-/** Column definitions — keys must match API field names. */
 const COLUMNS = [
   { key: 'timestamp_utc', label: 'Time', sortable: true, width: '90px' },
-  { key: 'attack_type', label: 'Type', sortable: true, width: '90px' },
+  { key: 'attack_type', label: 'Type', sortable: true, width: '95px' },
   { key: 'src_ip', label: 'Source', sortable: true, width: '1fr' },
   { key: 'dst_ip', label: 'Destination', sortable: true, width: '1fr' },
   { key: 'protocol', label: 'Proto', sortable: true, width: '60px' },
-  { key: 'confidence', label: 'Confidence', sortable: true, width: '100px' },
+  { key: 'confidence', label: 'Confidence', sortable: true, width: '110px' },
 ]
 
-/**
- * Compare two row values for sorting.
- *
- * @param {any} a - First value.
- * @param {any} b - Second value.
- * @param {('asc'|'desc')} dir - Sort direction.
- * @returns {number} Comparison result.
- */
 function compareValues(a, b, dir) {
   let aVal = a
   let bVal = b
@@ -43,12 +32,6 @@ function compareValues(a, b, dir) {
   return 0
 }
 
-/**
- * Convert an array of attack rows to a CSV string.
- *
- * @param {Array<object>} rows - Attack rows from the API.
- * @returns {string} CSV text.
- */
 function rowsToCsv(rows) {
   const headers = COLUMNS.map(c => c.label)
   const lines = [headers.join(',')]
@@ -68,12 +51,6 @@ function rowsToCsv(rows) {
   return lines.join('\n')
 }
 
-/**
- * Trigger a browser download of a CSV file.
- *
- * @param {string} csv - CSV text.
- * @param {string} filename - Download filename.
- */
 function downloadCsv(csv, filename) {
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
@@ -115,12 +92,10 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
     fetchData()
   }, [fetchData])
 
-  // Base rows for display: live context data merged with fetched rows.
   const baseRows = compact
     ? (recentAttacks.length > 0 ? recentAttacks : rows).slice(0, pageSize)
     : rows
 
-  // Apply sorting to base rows after normalizing live vs DB row field names.
   const displayRows = useMemo(() => {
     const normalized = baseRows.map(r => {
       const ctx = r.context || {}
@@ -157,9 +132,12 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
   return (
     <div className="glass-card history-card">
       <div className="chart-header">
-        <span className="chart-title">
-          {compact ? 'Recent Attacks' : 'Attack History'}
-        </span>
+        <div className="chart-title-wrap">
+          <ShieldAlert size={18} className="text-crimson" />
+          <span className="chart-title">
+            {compact ? 'Recent Attack Events' : 'Attack History Log'}
+          </span>
+        </div>
         <div className="history-header-actions">
           {showFilters && (
             <select
@@ -180,7 +158,7 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
           )}
           {displayRows.length > 0 && (
             <button className="history-export-btn" onClick={handleExport} title="Export CSV">
-              <Download size={14} />
+              <Download size={13} />
               CSV
             </button>
           )}
@@ -211,7 +189,7 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={COLUMNS.length} className="history-empty">Loading…</td></tr>
+              <tr><td colSpan={COLUMNS.length} className="history-empty">Loading history…</td></tr>
             ) : error ? (
               <tr>
                 <td colSpan={COLUMNS.length} className="history-error">
@@ -219,7 +197,7 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
                 </td>
               </tr>
             ) : displayRows.length === 0 ? (
-              <tr><td colSpan={COLUMNS.length} className="history-empty">No attacks recorded</td></tr>
+              <tr><td colSpan={COLUMNS.length} className="history-empty">No attack events recorded</td></tr>
             ) : (
               displayRows.map((row, i) => {
                 const isAttack = row.is_attack === 1 || row.is_attack === true
@@ -232,7 +210,7 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
                       {formatTime(row.timestamp_utc)}
                     </td>
                     <td>
-                      <span className="type-badge" style={{ color, borderColor: color + '50', background: color + '15' }}>
+                      <span className="type-badge" style={{ color, borderColor: `${color}40`, background: `${color}15` }}>
                         {row.attack_type}
                       </span>
                     </td>
@@ -253,6 +231,7 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
                             style={{
                               width: `${(row.confidence || 0) * 100}%`,
                               background: color,
+                              boxShadow: `0 0 6px ${color}`,
                             }}
                           />
                         </div>
@@ -276,7 +255,7 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
             onClick={() => setPage(p => Math.max(0, p - 1))}
             className="page-btn"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={15} />
           </button>
           <span className="page-info mono">
             Page {page + 1} of {totalPages} ({total.toLocaleString()} total)
@@ -286,17 +265,17 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
             onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
             className="page-btn"
           >
-            <ChevronRight size={16} />
+            <ChevronRight size={15} />
           </button>
         </div>
       )}
 
       <style>{`
         .history-card {
-          padding: 16px;
+          padding: 20px;
           display: flex;
           flex-direction: column;
-          height: 100%;
+          height: 425px;
         }
         .history-header-actions {
           display: flex;
@@ -304,36 +283,38 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
           gap: 8px;
         }
         .history-filter {
-          background: var(--bg-tertiary);
+          background: rgba(15, 23, 42, 0.8);
           color: var(--text-primary);
           border: 1px solid var(--border-default);
-          border-radius: 6px;
-          padding: 4px 8px;
-          font-size: 0.8rem;
+          border-radius: 8px;
+          padding: 5px 10px;
+          font-size: 0.78rem;
           cursor: pointer;
         }
         .history-export-btn {
           display: flex;
           align-items: center;
-          gap: 4px;
-          background: var(--bg-tertiary);
+          gap: 5px;
+          background: rgba(30, 41, 59, 0.6);
           color: var(--text-secondary);
-          border: 1px solid var(--border-default);
-          border-radius: 6px;
-          padding: 4px 10px;
-          font-size: 0.72rem;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
+          padding: 5px 12px;
+          font-size: 0.75rem;
+          font-weight: 600;
           cursor: pointer;
-          transition: all 0.2s;
+          transition: all 0.25s;
         }
         .history-export-btn:hover {
-          background: var(--bg-hover);
-          border-color: var(--accent-cyan);
+          background: rgba(0, 240, 255, 0.15);
+          border-color: rgba(0, 240, 255, 0.4);
           color: var(--accent-cyan);
         }
         .history-table-wrap {
           flex: 1;
           overflow-x: auto;
           overflow-y: auto;
+          margin-top: 10px;
         }
         .history-table {
           width: 100%;
@@ -342,38 +323,38 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
         }
         .history-table th {
           text-align: left;
-          padding: 8px 10px;
+          padding: 9px 10px;
           color: var(--text-secondary);
-          font-weight: 500;
+          font-weight: 600;
           font-size: 0.72rem;
           text-transform: uppercase;
-          letter-spacing: 0.5px;
+          letter-spacing: 0.6px;
           border-bottom: 1px solid var(--border-default);
           white-space: nowrap;
         }
         .th-content {
           display: flex;
           align-items: center;
-          gap: 3px;
+          gap: 4px;
         }
         .history-table td {
-          padding: 7px 10px;
-          border-bottom: 1px solid rgba(30,41,59,0.5);
+          padding: 8px 10px;
+          border-bottom: 1px solid rgba(30, 41, 59, 0.4);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
         .history-table tr:hover td {
-          background: var(--bg-tertiary);
+          background: rgba(30, 41, 59, 0.5);
         }
         .history-empty {
           text-align: center !important;
-          padding: 24px !important;
+          padding: 50px !important;
           color: var(--text-tertiary);
         }
         .history-error {
           text-align: center !important;
-          padding: 24px !important;
+          padding: 50px !important;
           color: var(--accent-crimson);
         }
         .retry-link {
@@ -387,20 +368,20 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
         .type-badge {
           display: inline-block;
           padding: 2px 8px;
-          border-radius: 8px;
+          border-radius: 6px;
           font-size: 0.7rem;
-          font-weight: 600;
+          font-weight: 700;
           border: 1px solid;
         }
         .conf-cell {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 8px;
         }
         .conf-bar-bg {
           width: 50px;
           height: 4px;
-          background: var(--bg-hover);
+          background: rgba(30, 41, 59, 0.8);
           border-radius: 2px;
           overflow: hidden;
           flex-shrink: 0;
@@ -415,13 +396,13 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
           align-items: center;
           justify-content: center;
           gap: 12px;
-          padding: 10px 0 0;
+          padding: 12px 0 0;
         }
         .page-btn {
-          background: var(--bg-tertiary);
+          background: rgba(30, 41, 59, 0.6);
           border: 1px solid var(--border-default);
-          border-radius: 6px;
-          padding: 4px 8px;
+          border-radius: 8px;
+          padding: 5px 10px;
           color: var(--text-primary);
           cursor: pointer;
           display: flex;
@@ -429,7 +410,7 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
           transition: all 0.2s;
         }
         .page-btn:hover:not(:disabled) {
-          background: var(--bg-hover);
+          background: rgba(0, 240, 255, 0.15);
           border-color: var(--accent-cyan);
         }
         .page-btn:disabled {

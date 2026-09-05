@@ -1,8 +1,8 @@
 /**
- * NetShield AI — Live traffic chart component.
+ * NetShield AI — Live traffic telemetry chart.
  *
  * Recharts area chart showing packets per second, split into normal (cyan)
- * and attack (crimson) stacked areas. Rolling 60-second window.
+ * and attack (crimson) stacked areas over a rolling 60-second window.
  *
  * @module components/LiveTrafficChart
  */
@@ -17,15 +17,10 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { Activity } from 'lucide-react'
 import { useDashboard } from '../context/DashboardContext.jsx'
 import { MAX_CHART_POINTS } from '../utils/constants.js'
 
-/**
- * Format a Unix timestamp (seconds) to HH:MM for the X axis.
- *
- * @param {number} ts - Unix epoch in seconds.
- * @returns {string} Formatted time string.
- */
 function formatXAxis(ts) {
   const d = new Date(ts * 1000)
   return d.toLocaleTimeString('en-GB', {
@@ -35,28 +30,20 @@ function formatXAxis(ts) {
   })
 }
 
-/**
- * Custom tooltip for the live traffic chart.
- * Defined at module level to avoid re-creation on every render.
- */
 function TrafficTooltip({ active, payload, label }) {
   if (!active || !payload || !payload.length) return null
   return (
-    <div style={{
-      background: 'rgba(17,24,39,0.95)',
-      border: '1px solid var(--border-default)',
-      borderRadius: '8px',
-      padding: '8px 12px',
-      fontSize: '0.8rem',
-    }}>
-      <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>
+    <div className="chart-tooltip-glass">
+      <div className="tooltip-time mono">
         {formatXAxis(label)}
       </div>
-      <div style={{ color: 'var(--accent-cyan)' }}>
-        Normal: {payload[0]?.value || 0}
+      <div className="tooltip-row text-cyan">
+        <span className="tooltip-dot" style={{ background: 'var(--accent-cyan)' }} />
+        Normal: <strong className="mono">{payload[0]?.value || 0}</strong> pkts/s
       </div>
-      <div style={{ color: 'var(--accent-crimson)' }}>
-        Attack: {payload[1]?.value || 0}
+      <div className="tooltip-row text-crimson">
+        <span className="tooltip-dot" style={{ background: 'var(--accent-crimson)' }} />
+        Attack: <strong className="mono">{payload[1]?.value || 0}</strong> pkts/s
       </div>
     </div>
   )
@@ -65,7 +52,6 @@ function TrafficTooltip({ active, payload, label }) {
 export default function LiveTrafficChart() {
   const { lastPacket } = useDashboard()
   const [chartData, setChartData] = useState(() => {
-    // Initialize with zeros
     const now = Math.floor(Date.now() / 1000)
     return Array.from({ length: MAX_CHART_POINTS }, (_, i) => ({
       time: now - (MAX_CHART_POINTS - 1 - i),
@@ -75,7 +61,6 @@ export default function LiveTrafficChart() {
   })
   const bufferRef = useRef({ normal: 0, attack: 0 })
 
-  // Accumulate incoming packets into the buffer
   useEffect(() => {
     if (!lastPacket) return
     if (lastPacket.is_attack) {
@@ -85,16 +70,18 @@ export default function LiveTrafficChart() {
     }
   }, [lastPacket])
 
-  // Every second, push the buffered counts to the chart
   useEffect(() => {
     const id = setInterval(() => {
       const now = Math.floor(Date.now() / 1000)
       setChartData(prev => {
-        const next = [...prev.slice(1), {
-          time: now,
-          normal: bufferRef.current.normal,
-          attack: bufferRef.current.attack,
-        }]
+        const next = [
+          ...prev.slice(1),
+          {
+            time: now,
+            normal: bufferRef.current.normal,
+            attack: bufferRef.current.attack,
+          },
+        ]
         bufferRef.current = { normal: 0, attack: 0 }
         return next
       })
@@ -105,22 +92,26 @@ export default function LiveTrafficChart() {
   return (
     <div className="glass-card chart-card">
       <div className="chart-header">
-        <span className="chart-title">Live Traffic</span>
-        <span className="chart-subtitle text-muted">Packets per second (rolling 60s)</span>
+        <div className="chart-title-wrap">
+          <Activity size={18} className="text-cyan" />
+          <span className="chart-title">Live Traffic Telemetry</span>
+        </div>
+        <span className="chart-subtitle text-muted">Packets per second (rolling 60s window)</span>
       </div>
-      <ResponsiveContainer width="100%" height={240}>
-        <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+
+      <ResponsiveContainer width="100%" height={245}>
+        <AreaChart data={chartData} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="normalGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#00f0ff" stopOpacity={0.4} />
-              <stop offset="95%" stopColor="#00f0ff" stopOpacity={0} />
+              <stop offset="5%" stopColor="#00f0ff" stopOpacity={0.45} />
+              <stop offset="95%" stopColor="#00f0ff" stopOpacity={0.0} />
             </linearGradient>
             <linearGradient id="attackGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#ef4444" stopOpacity={0.5} />
-              <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+              <stop offset="5%" stopColor="#ff2a5f" stopOpacity={0.65} />
+              <stop offset="95%" stopColor="#ff2a5f" stopOpacity={0.0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(56, 189, 248, 0.08)" />
           <XAxis
             dataKey="time"
             tickFormatter={formatXAxis}
@@ -135,15 +126,15 @@ export default function LiveTrafficChart() {
             type="monotone"
             dataKey="normal"
             stroke="#00f0ff"
-            strokeWidth={1.5}
+            strokeWidth={2}
             fill="url(#normalGrad)"
             name="Normal"
           />
           <Area
             type="monotone"
             dataKey="attack"
-            stroke="#ef4444"
-            strokeWidth={1.5}
+            stroke="#ff2a5f"
+            strokeWidth={2}
             fill="url(#attackGrad)"
             name="Attack"
           />
@@ -152,23 +143,54 @@ export default function LiveTrafficChart() {
 
       <style>{`
         .chart-card {
-          padding: 16px;
+          padding: 20px;
           display: flex;
           flex-direction: column;
         }
         .chart-header {
           display: flex;
-          align-items: baseline;
-          gap: 10px;
-          margin-bottom: 8px;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 12px;
+        }
+        .chart-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
         .chart-title {
-          font-size: 0.9rem;
-          font-weight: 600;
+          font-family: var(--font-heading);
+          font-size: 0.95rem;
+          font-weight: 700;
           color: var(--text-primary);
         }
         .chart-subtitle {
           font-size: 0.75rem;
+        }
+        .chart-tooltip-glass {
+          background: rgba(10, 16, 32, 0.92);
+          backdrop-filter: blur(12px);
+          border: 1px solid var(--border-hover);
+          border-radius: var(--radius-sm);
+          padding: 8px 12px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+          font-size: 0.78rem;
+        }
+        .tooltip-time {
+          color: var(--text-secondary);
+          margin-bottom: 4px;
+          font-size: 0.72rem;
+        }
+        .tooltip-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 3px;
+        }
+        .tooltip-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
         }
       `}</style>
     </div>

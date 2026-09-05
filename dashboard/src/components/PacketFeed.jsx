@@ -1,10 +1,8 @@
 /**
- * NetShield AI — Packet feed component.
+ * NetShield AI — Live packet feed component.
  *
- * Live scrolling feed of recent packet predictions. New packets are
- * prepended to the top with a fade-in animation. Holds a maximum of 50
- * items. If the user scrolls up, auto-scroll is paused until they click
- * the "new packets" indicator.
+ * Live scrolling feed of recent packet predictions with animated badges,
+ * glowing attack indicators, and smart scroll controls.
  *
  * @module components/PacketFeed
  */
@@ -13,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Radio } from 'lucide-react'
 import { useDashboard } from '../context/DashboardContext.jsx'
 import { formatTime, formatEndpoint, formatConfidence, protocolName } from '../utils/format.js'
-import { ATTACK_COLORS, MAX_PACKET_FEED } from '../utils/constants.js'
+import { ATTACK_COLORS } from '../utils/constants.js'
 
 export default function PacketFeed() {
   const { packets } = useDashboard()
@@ -21,7 +19,6 @@ export default function PacketFeed() {
   const [autoScroll, setAutoScroll] = useState(true)
   const [pendingCount, setPendingCount] = useState(0)
 
-  // Auto-scroll to top when new packets arrive if not paused
   useEffect(() => {
     if (autoScroll && listRef.current) {
       listRef.current.scrollTop = 0
@@ -47,38 +44,35 @@ export default function PacketFeed() {
   return (
     <div className="glass-card feed-card">
       <div className="feed-header">
-        <span className="chart-title">
-          <Radio size={15} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />
-          Live Packet Feed
-        </span>
+        <div className="feed-title-wrap">
+          <Radio size={16} className="text-cyan pulse-icon" />
+          <span className="chart-title">Live Packet Feed</span>
+        </div>
         <span className="feed-count text-muted mono">{packets.length}</span>
       </div>
 
-      <div
-        ref={listRef}
-        className="feed-list"
-        onScroll={handleScroll}
-      >
+      <div ref={listRef} className="feed-list" onScroll={handleScroll}>
         {packets.length === 0 ? (
-          <div className="feed-empty text-muted">Waiting for packets…</div>
+          <div className="feed-empty text-muted">Listening for live packet flows…</div>
         ) : (
           packets.map((pkt, i) => {
             const isAttack = pkt.is_attack
             const color = isAttack
-              ? (ATTACK_COLORS[pkt.label] || '#ef4444')
+              ? (ATTACK_COLORS[pkt.label] || '#ff2a5f')
               : 'var(--accent-cyan)'
             const ctx = pkt.context || {}
             return (
               <div
                 key={`${pkt.timestamp_utc}-${i}`}
                 className={`feed-item ${isAttack ? 'feed-item-attack' : ''}`}
-                style={{ animationDelay: i < 5 ? `${i * 0.03}s` : '0s' }}
               >
-                <span className="feed-dot" style={{ background: color }} />
-                <span className="feed-label" style={{ color }}>{pkt.label}</span>
+                <span className="feed-dot" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+                <span className="feed-label" style={{ color, borderColor: `${color}40`, background: `${color}12` }}>
+                  {pkt.label}
+                </span>
                 <span className="feed-ip mono">
                   {formatEndpoint(ctx.src_ip, ctx.src_port)}
-                  {' → '}
+                  <span className="arrow"> → </span>
                   {formatEndpoint(ctx.dst_ip, ctx.dst_port)}
                 </span>
                 <span className="feed-proto text-muted">{protocolName(ctx.protocol)}</span>
@@ -102,62 +96,85 @@ export default function PacketFeed() {
 
       <style>{`
         .feed-card {
-          padding: 16px;
+          padding: 20px;
           display: flex;
           flex-direction: column;
-          height: 420px;
+          height: 425px;
         }
         .feed-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 8px;
+          margin-bottom: 12px;
+        }
+        .feed-title-wrap {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .chart-title {
+          font-family: var(--font-heading);
+          font-size: 0.95rem;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+        .pulse-icon {
+          animation: pulse-ring 2s infinite;
         }
         .feed-count {
-          font-size: 0.8rem;
-          background: var(--bg-tertiary);
+          font-size: 0.75rem;
+          background: rgba(30, 41, 59, 0.6);
+          border: 1px solid rgba(255, 255, 255, 0.08);
           padding: 2px 8px;
-          border-radius: 8px;
+          border-radius: 12px;
         }
         .feed-list {
           flex: 1;
           overflow-y: auto;
           display: flex;
           flex-direction: column;
-          gap: 2px;
+          gap: 3px;
         }
         .feed-empty {
           text-align: center;
-          padding: 40px 0;
+          padding: 60px 0;
           font-size: 0.85rem;
         }
         .feed-item {
           display: grid;
-          grid-template-columns: 8px 70px 1fr 40px 60px 70px;
+          grid-template-columns: 8px 80px 1fr 40px 60px 70px;
           align-items: center;
           gap: 8px;
-          padding: 6px 8px;
-          border-radius: 6px;
+          padding: 7px 10px;
+          border-radius: 8px;
           font-size: 0.75rem;
-          animation: fade-in 0.3s ease;
-          transition: background 0.2s;
+          background: rgba(15, 23, 42, 0.3);
+          border: 1px solid transparent;
+          animation: fade-in 0.25s ease;
+          transition: all 0.2s;
         }
         .feed-item:hover {
-          background: var(--bg-tertiary);
+          background: rgba(30, 41, 59, 0.5);
+          border-color: rgba(56, 189, 248, 0.2);
         }
         .feed-item-attack {
-          background: rgba(239,68,68,0.06);
-          border-left: 2px solid var(--accent-crimson);
+          background: rgba(255, 42, 95, 0.08);
+          border: 1px solid rgba(255, 42, 95, 0.25);
+          box-shadow: inset 3px 0 0 var(--accent-crimson);
         }
         .feed-dot {
-          width: 8px;
-          height: 8px;
+          width: 7px;
+          height: 7px;
           border-radius: 50%;
           flex-shrink: 0;
         }
         .feed-label {
-          font-weight: 600;
-          font-size: 0.72rem;
+          font-weight: 700;
+          font-size: 0.68rem;
+          text-align: center;
+          padding: 1px 6px;
+          border-radius: 6px;
+          border: 1px solid;
           white-space: nowrap;
         }
         .feed-ip {
@@ -165,6 +182,10 @@ export default function PacketFeed() {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        .arrow {
+          color: var(--accent-cyan);
+          opacity: 0.7;
         }
         .feed-proto {
           font-size: 0.7rem;
@@ -182,20 +203,22 @@ export default function PacketFeed() {
         .feed-new-packets {
           text-align: center;
           padding: 6px;
-          background: var(--bg-tertiary);
-          border-radius: 6px;
+          background: rgba(0, 240, 255, 0.1);
+          border: 1px solid rgba(0, 240, 255, 0.3);
+          border-radius: 8px;
           color: var(--accent-cyan);
-          font-size: 0.8rem;
+          font-size: 0.78rem;
+          font-weight: 600;
           cursor: pointer;
-          margin-top: 4px;
-          transition: background 0.2s;
+          margin-top: 6px;
+          transition: all 0.2s;
         }
         .feed-new-packets:hover {
-          background: var(--bg-hover);
+          background: rgba(0, 240, 255, 0.2);
         }
         @media (max-width: 768px) {
           .feed-item {
-            grid-template-columns: 8px 60px 1fr 50px;
+            grid-template-columns: 8px 70px 1fr 50px;
           }
           .feed-proto, .feed-conf { display: none; }
         }

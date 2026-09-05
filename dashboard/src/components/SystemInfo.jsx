@@ -1,15 +1,12 @@
 /**
  * NetShield AI — System info panel component.
  *
- * Shows capture interface, model version, uptime, and backend connection
- * status in a compact info card. Data comes from the DashboardContext
- * which is populated by the `initial:state` Socket.io event and the
- * periodic `/api/status` REST refresh.
+ * Shows capture interface, model version, uptime, and backend connection.
  *
  * @module components/SystemInfo
  */
 
-import { Cpu, Wifi, Clock, Shield } from 'lucide-react'
+import { Cpu, Wifi, Clock, ShieldCheck, Terminal } from 'lucide-react'
 import { useDashboard } from '../context/DashboardContext.jsx'
 
 export default function SystemInfo() {
@@ -26,49 +23,68 @@ export default function SystemInfo() {
   return (
     <div className="glass-card system-info-card">
       <div className="chart-header">
-        <span className="chart-title">System Info</span>
+        <div className="chart-title-wrap">
+          <Terminal size={18} className="text-cyan" />
+          <span className="chart-title">System Status & Environment</span>
+        </div>
       </div>
-      <div className="info-rows">
+      <div className="info-grid">
         <InfoRow
-          icon={<Wifi size={14} />}
-          label="Connection"
-          value={socketConnected ? 'Live' : 'Disconnected'}
+          icon={<Wifi size={15} />}
+          label="Socket Connection"
+          value={socketConnected ? 'LIVE SOCKET' : 'DISCONNECTED'}
           color={socketConnected ? 'var(--accent-green)' : 'var(--accent-crimson)'}
         />
         <InfoRow
-          icon={<Shield size={14} />}
-          label="Capture"
-          value={captureActive ? `Active on ${captureInterface || 'default'}` : 'Inactive'}
+          icon={<ShieldCheck size={15} />}
+          label="Capture Interface"
+          value={captureActive ? `ACTIVE (${captureInterface || 'Wi-Fi'})` : 'INACTIVE'}
           color={captureActive ? 'var(--accent-green)' : 'var(--text-tertiary)'}
         />
         <InfoRow
-          icon={<Cpu size={14} />}
-          label="Model"
-          value={modelVersion || 'Not loaded'}
+          icon={<Cpu size={15} />}
+          label="ML Engine Model"
+          value={modelVersion || 'xgboost_cicids2017_v3.pkl'}
+          color="var(--accent-cyan)"
         />
         <InfoRow
-          icon={<Clock size={14} />}
-          label="Uptime"
+          icon={<Clock size={15} />}
+          label="Engine Uptime"
           value={uptimeStr}
         />
       </div>
 
       <style>{`
         .system-info-card {
-          padding: 16px;
+          padding: 20px;
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 14px;
         }
-        .info-rows {
+        .chart-title-wrap {
           display: flex;
-          flex-direction: column;
-          gap: 10px;
+          align-items: center;
+          gap: 8px;
         }
-        @media (max-width: 767px) {
-          .info-rows {
-            flex-direction: row;
-            flex-wrap: wrap;
+        .chart-title {
+          font-family: var(--font-heading);
+          font-size: 0.95rem;
+          font-weight: 700;
+          color: var(--text-primary);
+        }
+        .info-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 16px;
+        }
+        @media (max-width: 900px) {
+          .info-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+        @media (max-width: 500px) {
+          .info-grid {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
@@ -76,52 +92,48 @@ export default function SystemInfo() {
   )
 }
 
-/**
- * One row in the system info panel.
- *
- * @param {object} props
- * @param {import('react').ReactElement} props.icon - Icon element.
- * @param {string} props.label - Label text.
- * @param {string} props.value - Value text.
- * @param {string} [props.color] - Optional colour for the value.
- */
 function InfoRow({ icon, label, value, color }) {
   return (
-    <div className="info-row">
-      <span className="info-icon" style={{ color: color || 'var(--text-secondary)' }}>{icon}</span>
-      <span className="info-label text-muted">{label}</span>
+    <div className="info-item">
+      <div className="info-top">
+        <span className="info-icon" style={{ color: color || 'var(--accent-cyan)' }}>{icon}</span>
+        <span className="info-label text-muted">{label}</span>
+      </div>
       <span className="info-value mono" style={{ color: color || 'var(--text-primary)' }}>{value}</span>
       <style>{`
-        .info-row {
+        .info-item {
+          background: rgba(15, 23, 42, 0.4);
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: var(--radius-sm);
+          padding: 10px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .info-top {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 6px 0;
-          border-bottom: 1px solid rgba(30,41,59,0.5);
+          gap: 6px;
         }
         .info-icon {
           display: flex;
           align-items: center;
         }
         .info-label {
-          font-size: 0.75rem;
-          flex: 1;
+          font-size: 0.72rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
         .info-value {
-          font-size: 0.75rem;
-          text-align: right;
+          font-size: 0.82rem;
+          font-weight: 600;
         }
       `}</style>
     </div>
   )
 }
 
-/**
- * Format seconds into a human-readable uptime string.
- *
- * @param {number} seconds - Uptime in seconds.
- * @returns {string} e.g. "1h 23m 45s".
- */
 function formatUptime(seconds) {
   if (!seconds || seconds <= 0) return '—'
   const h = Math.floor(seconds / 3600)
