@@ -487,20 +487,20 @@ class TestPortScanTracker:
     def test_single_port_access_not_flagged(self) -> None:
         """Repeated access to port 443 (Chrome HTTPS) should NOT trigger PortScan."""
         from prediction.filter import PortScanTracker
-        tracker = PortScanTracker(time_window=10.0, min_distinct_ports=5)
-        
+        tracker = PortScanTracker(time_window=1.5, min_distinct_ports=5)
+
         # 10 access attempts to port 443 from same IP
         for _ in range(10):
             is_ps, count = tracker.record_and_check("192.168.1.50", 443)
             assert is_ps is False
-            assert count == 1
+            assert count == 0
 
     def test_multi_port_access_flagged(self) -> None:
-        """Accessing >= 5 distinct ports should trigger PortScan."""
+        """Accessing >= 5 distinct non-standard ports should trigger PortScan."""
         from prediction.filter import PortScanTracker
-        tracker = PortScanTracker(time_window=10.0, min_distinct_ports=5)
+        tracker = PortScanTracker(time_window=1.5, min_distinct_ports=5)
 
-        ports = [80, 443, 22, 21, 3389]
+        ports = [1001, 1002, 1003, 1004, 1005]
         for idx, port in enumerate(ports):
             is_ps, count = tracker.record_and_check("192.168.1.100", port)
             if idx < 4:
@@ -513,9 +513,9 @@ class TestPortScanTracker:
     def test_rule_based_portscan_override(self) -> None:
         """should_flag_as_attack should override BENIGN to PortScan when distinct ports >= 5."""
         from prediction.filter import PortScanTracker
-        tracker = PortScanTracker(time_window=10.0, min_distinct_ports=5)
+        tracker = PortScanTracker(time_window=1.5, min_distinct_ports=5)
 
-        for port in [1, 2, 3, 4, 5]:
+        for idx, port in enumerate([1001, 1002, 1003, 1004, 1005]):
             ctx = FlowContext(
                 src_ip="192.168.1.100",
                 dst_ip="8.8.8.8",
@@ -527,6 +527,8 @@ class TestPortScanTracker:
             raw = {
                 "Total Fwd Packets": 1.0,
                 "Total Backward Packets": 0.0,
+                "Total Length of Fwd Packets": 0.0,
+                "ACK Flag Count": 0.0,
             }
             res = should_flag_as_attack(
                 benign_pred,
@@ -534,9 +536,33 @@ class TestPortScanTracker:
                 raw_features=raw,
                 port_scan_tracker=tracker,
             )
-            if port < 5:
+            if idx < 4:
                 assert res.is_attack is False
             else:
                 assert res.is_attack is True
                 assert res.label == "PortScan"
+
+    def test_cooldown_prevents_alert_flooding(self) -> None:
+        """After triggering PortScan, subsequent accesses in cooldown window should return False."""
+        from prediction.filter import PortScanTracker
+        tracker = PortScanTracker(time_window=1.5, min_distinct_ports=5, cooldown_seconds=5.0)
+
+        # Trigger PortScan on ports 1001..1005 at t=100.0s
+        for p in [1001, 1002, 1003, 1004, 1005]:
+            is_ps, _ = tracker.record_and_check("192.168.1.100", p, timestamp=100.0)
+
+        assert is_ps is True
+
+        # Packets arriving immediately after during cooldown (t=101.0s)
+        for p in range(1006, 1020):
+            is_ps_cooldown, _ = tracker.record_and_check("192.168.1.100", p, timestamp=101.0)
+            assert is_ps_cooldown is False
+
+        # Access arriving after cooldown expires (at t=106.0s)
+        # History was reset, so port 2000 is distinct port #1
+        is_ps_after, count = tracker.record_and_check("192.168.1.100", 2000, timestamp=106.0)
+        assert is_ps_after is False
+        assert count == 1
+
+
 

@@ -45,20 +45,37 @@ from prediction.schemas import (
 logger = logging.getLogger(__name__)
 
 
+_EXCLUDED_PORT_SCAN_PORTS: frozenset[int] = frozenset(
+    {
+        80, 443, 53, 3001, 8000, 5173, 137, 138, 1900, 5353, 5355
+    }
+)
+
+
 class PortScanTracker:
     """Stateful tracker for multi-port scanning activity per source IP.
 
     A PortScan attack is defined by a single source IP targeting multiple
-    distinct destination ports within a short time window (e.g., >= 5 distinct
-    ports within 10 seconds). Single-destination connection attempts (like Chrome
-    connecting repeatedly to port 443) only count as 1 distinct port and are
-    never flagged.
+    distinct non-standard destination ports in a tight time burst (e.g., >= 5
+    distinct ports within 1.5 seconds).
+
+    To prevent false positives and alert flooding:
+      - Standard application ports (80, 443, 53, 3001, 8000, 5173) are excluded.
+      - Tight 1.5s time window ensures normal spread-out browsing never triggers.
+      - Once an alert fires, a 5.0s cooldown and history reset prevent trailing alerts.
     """
 
-    def __init__(self, time_window: float = 10.0, min_distinct_ports: int = 5) -> None:
+    def __init__(
+        self,
+        time_window: float = 1.5,
+        min_distinct_ports: int = 5,
+        cooldown_seconds: float = 5.0,
+    ) -> None:
         self.time_window = time_window
         self.min_distinct_ports = min_distinct_ports
+        self.cooldown_seconds = cooldown_seconds
         self._history: dict[str, list[tuple[float, int]]] = defaultdict(list)
+        self._last_alert_time: dict[str, float] = {}
 
     def record_and_check(self, src_ip: str, dst_port: int, timestamp: float | None = None) -> tuple[bool, int]:
         """Record a port access and check if it exceeds the distinct port threshold.
@@ -71,10 +88,16 @@ class PortScanTracker:
         Returns:
             Tuple of (is_portscan: bool, distinct_port_count: int).
         """
-        if not src_ip or dst_port <= 0:
+        if not src_ip or dst_port <= 0 or dst_port in _EXCLUDED_PORT_SCAN_PORTS:
             return False, 0
 
         now = timestamp if timestamp is not None else time.time()
+
+        # Check if this IP is in cooldown from a recent PortScan alert
+        last_alert = self._last_alert_time.get(src_ip, 0.0)
+        if (now - last_alert) < self.cooldown_seconds:
+            return False, 0
+
         cutoff = now - self.time_window
 
         # Filter out records older than cutoff and append current access
@@ -89,11 +112,20 @@ class PortScanTracker:
 
         distinct_ports = {rec[1] for rec in records}
         count = len(distinct_ports)
-        return count >= self.min_distinct_ports, count
+
+        if count >= self.min_distinct_ports:
+            self._last_alert_time[src_ip] = now
+            self._history[src_ip] = []
+            return True, count
+
+        return False, count
 
     def reset(self) -> None:
-        """Clear all tracked IP history."""
+        """Clear all tracked IP history and cooldowns."""
         self._history.clear()
+        self._last_alert_time.clear()
+
+
 
 
 _DEFAULT_PORT_SCAN_TRACKER = PortScanTracker()
@@ -349,14 +381,17 @@ def should_flag_as_attack(
         psh_flag = _get_feature(prediction, "PSH Flag Count", 0.0, raw_features)
 
         # ── Rule: PortScan (multi-port scan from single source IP) ──────
-        # Single-packet or low-packet TCP SYN flows targeting multiple
-        # distinct destination ports within a short time window.
+        # Single-packet TCP SYN probes (bwd_pkts == 0, fwd_pkts <= 2, fwd_len == 0)
+        # targeting >=5 distinct non-standard ports within 1.5 seconds.
         if (
             protocol == 6
             and src_ip
             and dst_port > 0
-            and bwd_pkts <= 1
-            and fwd_pkts <= 5
+            and dst_port not in _EXCLUDED_PORT_SCAN_PORTS
+            and bwd_pkts == 0
+            and fwd_pkts <= 2
+            and fwd_len == 0
+            and ack_flag == 0
         ):
             tracker = port_scan_tracker if port_scan_tracker is not None else _DEFAULT_PORT_SCAN_TRACKER
             is_ps, distinct_count = tracker.record_and_check(src_ip, dst_port)
