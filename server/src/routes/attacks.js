@@ -19,9 +19,12 @@ const router = Router();
  */
 router.get('/', async (req, res) => {
   try {
-    const { limit = 50, offset = 0, attack_type } = req.query;
+    const { limit = 50, offset = 0, attack_type, only_attacks } = req.query;
+    const params = { limit, offset };
+    if (attack_type) params.attack_type = attack_type;
+    if (only_attacks !== undefined) params.only_attacks = only_attacks;
     const resp = await axios.get(`${req.pythonApiUrl}/api/attacks`, {
-      params: { limit, offset, attack_type },
+      params,
       timeout: 10000,
     });
     res.json(resp.data);

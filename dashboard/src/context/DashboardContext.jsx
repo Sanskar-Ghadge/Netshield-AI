@@ -9,7 +9,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import { useSocket } from '../hooks/useSocket.js'
-import { getStats, getStatus } from '../api/client.js'
+import { getStats, getStatus, resetSessionData } from '../api/client.js'
 import { STATS_REFRESH_INTERVAL } from '../utils/constants.js'
 
 const DashboardContext = createContext(null)
@@ -107,10 +107,25 @@ export function DashboardProvider({ children }) {
       packetBufferRef.current.push(data)
     }
 
+    const normalizeAttack = (data) => {
+      if (!data) return data
+      const ctx = data.context || {}
+      return {
+        ...data,
+        attack_type: data.attack_type || data.label || 'BENIGN',
+        src_ip: data.src_ip || ctx.src_ip || '',
+        dst_ip: data.dst_ip || ctx.dst_ip || '',
+        src_port: data.src_port ?? ctx.src_port ?? 0,
+        dst_port: data.dst_port ?? ctx.dst_port ?? 0,
+        protocol: data.protocol ?? ctx.protocol ?? 0,
+      }
+    }
+
     const onAttackAlert = (data) => {
-      setLastAttack(data)
+      const normalized = normalizeAttack(data)
+      setLastAttack(normalized)
       setAttackCount(prev => prev + 1)
-      setRecentAttacks(prev => [data, ...prev].slice(0, 100))
+      setRecentAttacks(prev => [normalized, ...prev].slice(0, 100))
     }
 
     const onThreatUpdate = (data) => {
@@ -160,6 +175,27 @@ export function DashboardProvider({ children }) {
     return () => clearInterval(interval)
   }, [refreshStats])
 
+  const resetData = useCallback(async () => {
+    try {
+      await resetSessionData()
+      setThreatLevel('SAFE')
+      setTotalPackets(0)
+      setAttackCount(0)
+      setNormalCount(0)
+      setRecentAttacks([])
+      setLastAttack(null)
+      setLastPacket(null)
+      setPackets([])
+      setAttackDistribution([])
+      setTopAttackers([])
+      setAttackSummary([])
+      packetBufferRef.current = []
+      await refreshStats()
+    } catch {
+      // Backend may be offline
+    }
+  }, [refreshStats])
+
   const value = {
     // Connection
     socketConnected: connected,
@@ -185,6 +221,7 @@ export function DashboardProvider({ children }) {
     lastPacket,
     packets,
     refreshStats,
+    resetData,
   }
 
   return (

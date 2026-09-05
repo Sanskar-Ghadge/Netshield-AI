@@ -218,7 +218,9 @@ async def lifespan(app: FastAPI):
             state.attack_confidence_threshold * 100,
         )
 
-    # 2. Init alerts, chatbot, reports
+    # 2. Init alerts, chatbot, reports and reset DB session
+    state.db.clear_all_data()
+    logger.info("Database session reset — all counters starting from 0")
     state.alerts = AlertDispatcher(state.settings)
     state.chatbot = Chatbot(state.settings.gemini_api_key, state.db)
     state.reports = ReportGenerator(state.db)
@@ -448,6 +450,7 @@ async def get_attacks(
     limit: int = 50,
     offset: int = 0,
     attack_type: Optional[str] = None,
+    only_attacks: bool = True,
 ) -> dict[str, Any]:
     """Return paginated attack/prediction history.
 
@@ -455,16 +458,27 @@ async def get_attacks(
         limit: Maximum rows (default 50, max 500).
         offset: Pagination offset.
         attack_type: Optional filter by label.
+        only_attacks: Filter for is_attack = 1 (default True).
 
     Returns:
         Dictionary with rows, total, limit, offset.
     """
     state: AppState = app.state.app
     limit = min(limit, 500)
-    rows = state.db.get_attacks(limit=limit, offset=offset, attack_type=attack_type)
+    rows = state.db.get_attacks(
+        limit=limit, offset=offset, attack_type=attack_type, only_attacks=only_attacks
+    )
+    stats = state.db.get_stats()
+    if attack_type and attack_type != "All":
+        total_count = stats["attack_distribution"].get(attack_type, len(rows))
+    elif only_attacks:
+        total_count = stats["attacks"]
+    else:
+        total_count = stats["total"]
+
     return {
         "attacks": rows,
-        "total": state.db.get_stats()["total"],
+        "total": total_count,
         "limit": limit,
         "offset": offset,
     }
@@ -483,6 +497,19 @@ async def get_stats() -> dict[str, Any]:
     stats["top_attackers"] = state.db.get_top_attackers()
     stats["attack_summary"] = state.db.get_attack_summary()
     return stats
+
+
+@app.post("/api/reset")
+async def reset_session_data() -> dict[str, Any]:
+    """Reset all database records and clear packet/attack counts to 0.
+
+    Returns:
+        Dictionary with status message.
+    """
+    state: AppState = app.state.app
+    state.db.clear_all_data()
+    logger.info("Session data manually reset to 0.")
+    return {"status": "ok", "message": "All packet and attack counters reset to 0"}
 
 
 @app.post("/api/chatbot", response_model=ChatbotResponse)

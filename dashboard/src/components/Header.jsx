@@ -8,13 +8,14 @@
 
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Shield, Activity, FileText, Home } from 'lucide-react'
+import { Shield, Activity, FileText, Home, RotateCcw } from 'lucide-react'
 import { useDashboard } from '../context/DashboardContext.jsx'
 import { THREAT_COLORS, THREAT_BG_COLORS } from '../utils/constants.js'
 
 export default function Header() {
-  const { threatLevel, socketConnected } = useDashboard()
+  const { threatLevel, socketConnected, resetData } = useDashboard()
   const [clock, setClock] = useState('')
+  const [resetting, setResetting] = useState(false)
 
   useEffect(() => {
     const update = () => {
@@ -30,6 +31,12 @@ export default function Header() {
     const id = setInterval(update, 1000)
     return () => clearInterval(id)
   }, [])
+
+  const handleReset = async () => {
+    setResetting(true)
+    await resetData()
+    setResetting(false)
+  }
 
   const threatColor = THREAT_COLORS[threatLevel] || THREAT_COLORS.SAFE
   const threatBg = THREAT_BG_COLORS[threatLevel] || THREAT_BG_COLORS.SAFE
@@ -65,6 +72,15 @@ export default function Header() {
       </nav>
 
       <div className="header-right">
+        <button
+          className="reset-btn"
+          onClick={handleReset}
+          disabled={resetting}
+          title="Reset all packet counters and attack logs to 0"
+        >
+          <RotateCcw size={14} className={resetting ? 'spin' : ''} />
+          {resetting ? 'Resetting…' : 'Reset Session'}
+        </button>
         <div
           className="threat-badge"
           style={{ color: threatColor, background: threatBg, borderColor: threatColor }}
@@ -161,6 +177,31 @@ export default function Header() {
           display: flex;
           align-items: center;
           gap: 14px;
+        }
+        .reset-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 5px 12px;
+          border-radius: 8px;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid var(--border-default);
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .reset-btn:hover {
+          background: rgba(239,68,68,0.15);
+          color: #ef4444;
+          border-color: rgba(239,68,68,0.4);
+        }
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          100% { transform: rotate(360deg); }
         }
         .threat-badge {
           display: flex;

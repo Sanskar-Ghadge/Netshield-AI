@@ -85,6 +85,18 @@ class Database:
             )
             self._conn.commit()
 
+    def clear_all_data(self) -> None:
+        """Clear all stored attacks and traffic stats from the database."""
+        with self._lock:
+            self._conn.executescript(
+                """
+                DELETE FROM attacks;
+                DELETE FROM traffic_stats;
+                """
+            )
+            self._conn.commit()
+            self._conn.execute("VACUUM;")
+
     # ------------------------------------------------------------------
     # Logging
     # ------------------------------------------------------------------
@@ -135,6 +147,7 @@ class Database:
         limit: int = 50,
         offset: int = 0,
         attack_type: Optional[str] = None,
+        only_attacks: bool = False,
     ) -> list[dict[str, Any]]:
         """Return paginated attack/prediction records.
 
@@ -142,12 +155,13 @@ class Database:
             limit: Maximum number of rows.
             offset: Pagination offset.
             attack_type: Optional filter by label (e.g. "DDoS").
+            only_attacks: If True (default), filter by is_attack = 1.
 
         Returns:
             List of row dictionaries.
         """
         with self._lock:
-            if attack_type:
+            if attack_type and attack_type != "All":
                 cur = self._conn.execute(
                     """
                     SELECT * FROM attacks
@@ -156,6 +170,16 @@ class Database:
                     LIMIT ? OFFSET ?
                     """,
                     (attack_type, limit, offset),
+                )
+            elif only_attacks:
+                cur = self._conn.execute(
+                    """
+                    SELECT * FROM attacks
+                    WHERE is_attack = 1
+                    ORDER BY timestamp_utc DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (limit, offset),
                 )
             else:
                 cur = self._conn.execute(

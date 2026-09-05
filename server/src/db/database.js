@@ -37,12 +37,18 @@ class DB {
    * @param {string|null} [attackType=null] - Filter by label.
    * @returns {Array<object>} Array of row objects.
    */
-  getAttacks(limit = 50, offset = 0, attackType = null) {
-    if (attackType) {
+  getAttacks(limit = 50, offset = 0, attackType = null, onlyAttacks = true) {
+    if (attackType && attackType !== 'All') {
       const stmt = this.db.prepare(
         'SELECT * FROM attacks WHERE attack_type = ? ORDER BY timestamp_utc DESC LIMIT ? OFFSET ?'
       );
       return stmt.all(attackType, limit, offset);
+    }
+    if (onlyAttacks) {
+      const stmt = this.db.prepare(
+        'SELECT * FROM attacks WHERE is_attack = 1 ORDER BY timestamp_utc DESC LIMIT ? OFFSET ?'
+      );
+      return stmt.all(limit, offset);
     }
     const stmt = this.db.prepare(
       'SELECT * FROM attacks ORDER BY timestamp_utc DESC LIMIT ? OFFSET ?'
@@ -93,7 +99,7 @@ class DB {
    */
   getRecentAttacks(limit = 10) {
     const stmt = this.db.prepare(
-      'SELECT * FROM attacks ORDER BY timestamp_utc DESC LIMIT ?'
+      'SELECT * FROM attacks WHERE is_attack = 1 ORDER BY timestamp_utc DESC LIMIT ?'
     );
     return stmt.all(limit);
   }

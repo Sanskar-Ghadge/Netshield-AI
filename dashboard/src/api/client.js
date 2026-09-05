@@ -114,3 +114,13 @@ export async function getNodeHealth() {
   const { data } = await client.get('/api/node-health')
   return data
 }
+
+/**
+ * Reset all database records and clear packet/attack counts to 0.
+ *
+ * @returns {Promise<object>} Reset response.
+ */
+export async function resetSessionData() {
+  const { data } = await client.post('/api/reset', {})
+  return data
+}

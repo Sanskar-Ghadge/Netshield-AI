@@ -69,6 +69,21 @@ app.get('/api/status', async (_req, res) => {
   }
 });
 
+// Reset session data (0 packets, 0 attacks)
+app.post('/api/reset', async (_req, res) => {
+  try {
+    const resp = await axios.post(`${PYTHON_API_URL}/api/reset`, {}, { timeout: 10000 });
+    res.json(resp.data);
+  } catch (err) {
+    if (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET') {
+      return res.status(503).json({ error: 'Python backend unavailable' });
+    }
+    const status = err.response?.status || 500;
+    const message = err.response?.data?.detail || err.message;
+    res.status(status).json({ error: message });
+  }
+});
+
 // Health check for Node.js itself
 app.get('/api/node-health', (_req, res) => {
   res.json({

@@ -23,6 +23,22 @@ Write-Host "  NetShield AI -- Starting All Servers" -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host ""
 
+# -- 0a. Stop any running servers first ----------------------
+Write-Host "  Stopping any running NetShield processes..." -ForegroundColor DarkGray
+& (Join-Path $MyInvocation.MyCommand.Path "..\stop_all.ps1") | Out-Null
+
+# -- 0. Clean previous session database (restart values to 0) -
+Write-Host "[0/3] Preparing fresh monitoring session..." -ForegroundColor White
+$DbFile = Join-Path $PythonEngine "netshield.db"
+$DbWal  = Join-Path $PythonEngine "netshield.db-wal"
+$DbShm  = Join-Path $PythonEngine "netshield.db-shm"
+
+if (Test-Path $DbFile) { Remove-Item -Path $DbFile -Force -ErrorAction SilentlyContinue }
+if (Test-Path $DbWal)  { Remove-Item -Path $DbWal  -Force -ErrorAction SilentlyContinue }
+if (Test-Path $DbShm)  { Remove-Item -Path $DbShm  -Force -ErrorAction SilentlyContinue }
+Write-Host "  Session data reset -- all counters starting from 0!" -ForegroundColor Green
+Write-Host ""
+
 # -- 1. Start Python FastAPI Engine (port 8000) -------------
 Write-Host "[1/3] Starting Python FastAPI engine on port 8000..." -ForegroundColor White
 

@@ -112,17 +112,29 @@ export default function AttackHistory({ compact = false, showFilters = false }) 
   }, [page, filter, pageSize])
 
   useEffect(() => {
-    if (!compact) {
-      fetchData()
-    }
-  }, [fetchData, compact])
+    fetchData()
+  }, [fetchData])
 
-  // Base rows for display: live context data in compact mode, fetched rows otherwise.
-  const baseRows = compact ? recentAttacks.slice(0, pageSize) : rows
+  // Base rows for display: live context data merged with fetched rows.
+  const baseRows = compact
+    ? (recentAttacks.length > 0 ? recentAttacks : rows).slice(0, pageSize)
+    : rows
 
-  // Apply sorting to base rows.  This works for both compact and full modes.
+  // Apply sorting to base rows after normalizing live vs DB row field names.
   const displayRows = useMemo(() => {
-    return [...baseRows].sort((a, b) => compareValues(a[sortKey], b[sortKey], sortDir))
+    const normalized = baseRows.map(r => {
+      const ctx = r.context || {}
+      return {
+        ...r,
+        attack_type: r.attack_type || r.label || 'BENIGN',
+        src_ip: r.src_ip || ctx.src_ip || '',
+        dst_ip: r.dst_ip || ctx.dst_ip || '',
+        src_port: r.src_port ?? ctx.src_port ?? 0,
+        dst_port: r.dst_port ?? ctx.dst_port ?? 0,
+        protocol: r.protocol ?? ctx.protocol ?? 0,
+      }
+    })
+    return normalized.sort((a, b) => compareValues(a[sortKey], b[sortKey], sortDir))
   }, [baseRows, sortKey, sortDir])
 
   const handleSort = (key) => {

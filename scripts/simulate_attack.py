@@ -164,9 +164,9 @@ def _check_scapy() -> None:
 def _run_ddos(interface: Optional[str], count: int, delay_ms: float, target: str = "127.0.0.1", src: str = "127.0.0.1") -> int:
     """Send a TCP SYN flood to the target IP on port 80.
 
-    Each packet has a random source port, creating many short flows with
-    high packet counts, zero backward packets, and zero flow duration —
-    matching the CICIDS2017 DDoS flow signature.
+    Sends batches of packets from fixed source ports so the flow aggregator
+    observes high forward packet counts (fwd_pkts >= 100) — matching the
+    CICIDS2017 DDoS flow signature.
 
     Args:
         interface: Optional network interface to send on.
@@ -181,32 +181,36 @@ def _run_ddos(interface: Optional[str], count: int, delay_ms: float, target: str
     from scapy.all import IP, TCP, send
 
     sent = 0
-    for _ in range(count):
-        try:
-            sport = random.randint(1024, 65535)
-            pkt = IP(src=src, dst=target) / TCP(
-                sport=sport,
-                dport=_DDNS_PORT,
-                flags="S",
-                seq=random.randint(1000, 999999),
-            )
-            send(pkt, verbose=0, iface=interface)
-            sent += 1
-            if delay_ms > 0:
-                time.sleep(delay_ms / 1000.0)
-        except KeyboardInterrupt:
-            break
-        except Exception:
-            # Some packets may fail (permission, interface), keep going
-            continue
+    # Use 5 source ports, 100 packets each for a total of 500 packets
+    num_flows = 5
+    pkts_per_flow = max(100, count // num_flows)
+    source_ports = [random.randint(1024, 65535) for _ in range(num_flows)]
+
+    for sport in source_ports:
+        for _ in range(pkts_per_flow):
+            try:
+                pkt = IP(src=src, dst=target) / TCP(
+                    sport=sport,
+                    dport=_DDNS_PORT,
+                    flags="S",
+                    seq=random.randint(1000, 999999),
+                )
+                send(pkt, verbose=0, iface=interface)
+                sent += 1
+                if delay_ms > 0:
+                    time.sleep(delay_ms / 1000.0)
+            except KeyboardInterrupt:
+                return sent
+            except Exception:
+                continue
     return sent
 
 
 def _run_portscan(interface: Optional[str], count: int, delay_ms: float, target: str = "127.0.0.1", src: str = "127.0.0.1") -> int:
     """Send TCP SYN packets to ports 1-N on the target IP.
 
-    Each packet targets a different destination port, creating 200
-    single-packet flows — matching the CICIDS2017 PortScan signature.
+    Each packet targets a different destination port from a consistent source port,
+    creating a multi-port scan pattern matching the CICIDS2017 PortScan signature.
 
     Args:
         interface: Optional network interface to send on.
@@ -221,9 +225,9 @@ def _run_portscan(interface: Optional[str], count: int, delay_ms: float, target:
     from scapy.all import IP, TCP, send
 
     sent = 0
+    sport = random.randint(1024, 65535)
     for dport in range(1, count + 1):
         try:
-            sport = random.randint(1024, 65535)
             pkt = IP(src=src, dst=target) / TCP(
                 sport=sport,
                 dport=dport,
@@ -244,8 +248,8 @@ def _run_portscan(interface: Optional[str], count: int, delay_ms: float, target:
 def _run_bruteforce(interface: Optional[str], count: int, delay_ms: float, target: str = "127.0.0.1", src: str = "127.0.0.1") -> int:
     """Send rapid TCP SYN packets to the target IP on port 22 (SSH).
 
-    Many rapid connection attempts to the same port from varying source
-    ports — matching the CICIDS2017 BruteForce flow signature.
+    Sends batches of SYN packets to SSH port 22 (fwd_pkts >= 50) — matching
+    the CICIDS2017 BruteForce flow signature.
 
     Args:
         interface: Optional network interface to send on.
@@ -260,23 +264,27 @@ def _run_bruteforce(interface: Optional[str], count: int, delay_ms: float, targe
     from scapy.all import IP, TCP, send
 
     sent = 0
-    for _ in range(count):
-        try:
-            sport = random.randint(1024, 65535)
-            pkt = IP(src=src, dst=target) / TCP(
-                sport=sport,
-                dport=_SSH_PORT,
-                flags="S",
-                seq=random.randint(1000, 999999),
-            )
-            send(pkt, verbose=0, iface=interface)
-            sent += 1
-            if delay_ms > 0:
-                time.sleep(delay_ms / 1000.0)
-        except KeyboardInterrupt:
-            break
-        except Exception:
-            continue
+    num_flows = 4
+    pkts_per_flow = max(50, count // num_flows)
+    source_ports = [random.randint(1024, 65535) for _ in range(num_flows)]
+
+    for sport in source_ports:
+        for _ in range(pkts_per_flow):
+            try:
+                pkt = IP(src=src, dst=target) / TCP(
+                    sport=sport,
+                    dport=_SSH_PORT,
+                    flags="S",
+                    seq=random.randint(1000, 999999),
+                )
+                send(pkt, verbose=0, iface=interface)
+                sent += 1
+                if delay_ms > 0:
+                    time.sleep(delay_ms / 1000.0)
+            except KeyboardInterrupt:
+                return sent
+            except Exception:
+                continue
     return sent
 
 

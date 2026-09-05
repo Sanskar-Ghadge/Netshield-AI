@@ -24,12 +24,12 @@ foreach ($port in $Ports) {
     $connections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     if ($connections) {
         foreach ($conn in $connections) {
-            $pid = $conn.OwningProcess
-            if ($pid -and $pid -ne 0) {
-                $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+            $procId = $conn.OwningProcess
+            if ($procId -and $procId -ne 0) {
+                $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
                 $procName = if ($proc) { $proc.ProcessName } else { "unknown" }
-                Write-Host "  Killing PID $pid ($procName) on port $port..." -ForegroundColor Yellow
-                Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+                Write-Host "  Killing PID $procId ($procName) on port $port..." -ForegroundColor Yellow
+                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
                 $Killed++
             }
         }

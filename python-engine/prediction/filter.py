@@ -302,31 +302,7 @@ def should_flag_as_attack(
                 reason=f"Rule: {attack_label} SYN flood ({int(fwd_pkts)} fwd pkts, 0 bwd, 0 payload)",
             )
 
-        # ── Rule: PortScan (single SYN, no backward) ───────────────
-        # Single TCP SYN packet, no backward, no payload.
-        # The model classifies these as BENIGN because individual SYN
-        # packets to a port look like normal connection attempts.
-        # We flag them as PortScan if there's no backward response
-        # (SYN-only, no SYN-ACK).
-        if (
-            protocol == 6
-            and fwd_pkts == 1
-            and bwd_pkts == 0
-            and fwd_len == 0
-            and ack_flag == 0
-            and fin_flag == 0
-        ):
-            logger.info(
-                "Rule-based detection: PortScan (single SYN to port %s, "
-                "no response — model said %s)",
-                dst_port,
-                prediction.label,
-            )
-            return _override_to_attack(
-                prediction,
-                "PortScan",
-                reason=f"Rule: PortScan (single SYN to port {dst_port}, no response)",
-            )
+
 
         # ── Rule: BruteForce (many SYN to same port, no backward) ──
         # Multiple forward TCP SYN packets to the same destination port
