@@ -75,7 +75,7 @@ class TestChatbot:
             bot = Chatbot(api_key="fake_key", database=mock_db)
             response = bot.query("hello")
             assert isinstance(response, str)
-            assert "could not be initialized" in response.lower()
+            assert "could not generate a response" in response.lower()
 
     def test_successful_query(self, mock_db: MagicMock) -> None:
         """A successful Gemini call should return the model's text."""
@@ -103,7 +103,8 @@ class TestChatbot:
             bot = Chatbot(api_key="fake_key", database=mock_db)
             response = bot.query("tell me about attacks")
             assert isinstance(response, str)
-            assert "error" in response.lower()
+            assert "quota" in response.lower() or "demand" in response.lower()
+
 
     def test_system_prompt_contains_db_context(self, mock_db: MagicMock) -> None:
         """The system prompt should include threat level and recent attacks."""
