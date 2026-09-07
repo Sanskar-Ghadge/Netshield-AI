@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { DashboardProvider, useDashboard } from './context/DashboardContext.jsx'
+import { AuthProvider } from './context/AuthContext.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import Dashboard from './pages/Dashboard.jsx'
@@ -89,9 +90,11 @@ function MainLayout() {
 export default function App() {
   return (
     <BrowserRouter>
-      <DashboardProvider>
-        <MainLayout />
-      </DashboardProvider>
+      <AuthProvider>
+        <DashboardProvider>
+          <MainLayout />
+        </DashboardProvider>
+      </AuthProvider>
     </BrowserRouter>
   )
 }

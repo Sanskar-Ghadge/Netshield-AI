@@ -20,11 +20,13 @@ import axios from 'axios';
 
 import SocketHandler from './utils/socketHandler.js';
 import PythonWsClient from './utils/pythonWs.js';
+import DB from './db/database.js';
 import attacksRouter from './routes/attacks.js';
 import statsRouter from './routes/stats.js';
 import reportsRouter from './routes/reports.js';
 import chatbotRouter from './routes/chatbot.js';
 import alertsRouter from './routes/alerts.js';
+import authRouter from './routes/auth.js';
 
 // ── Load environment ────────────────────────────────────────────
 dotenv.config();
@@ -32,10 +34,14 @@ dotenv.config();
 const PORT = parseInt(process.env.NODE_PORT || '3001', 10);
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
 const PYTHON_WS_URL = process.env.PYTHON_WS_URL || 'ws://localhost:8000/ws/packets';
+const DB_PATH = process.env.DB_PATH || 'netshield.db';
 
-// ── Create Express app ──────────────────────────────────────────
+// ── Create Express app & DB ─────────────────────────────────────
 const app = express();
 const server = http.createServer(app);
+
+const db = new DB(DB_PATH);
+app.set('db', db);
 
 // ── Middleware ──────────────────────────────────────────────────
 app.use(cors({ origin: '*' }));
@@ -48,6 +54,7 @@ app.use((req, _res, next) => {
 });
 
 // ── REST Routes ─────────────────────────────────────────────────
+app.use('/api/auth', authRouter);
 app.use('/api/attacks', attacksRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/reports', reportsRouter);

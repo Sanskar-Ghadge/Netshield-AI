@@ -1,33 +1,146 @@
-/**
- * Database module — read-only access to the shared SQLite file.
- *
- * Python writes all predictions; Node.js reads them for the dashboard.
- *
- * @module db/database
- */
-
-import Database from 'better-sqlite3';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+let DatabaseClass;
+try {
+  const { DatabaseSync } = await import('node:sqlite');
+  DatabaseClass = DatabaseSync;
+} catch {
+  const { default: BetterSqlite } = await import('better-sqlite3');
+  DatabaseClass = BetterSqlite;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Read-only SQLite wrapper for dashboard queries.
+ * Read-write SQLite wrapper for dashboard and auth queries.
  */
 class DB {
   /**
-   * Open the SQLite database in read-only mode.
+   * Open the SQLite database in read-write mode.
    *
    * @param {string} dbPath - Path to the netshield.db file.
    */
   constructor(dbPath) {
+    const serverRoot = path.resolve(__dirname, '../..');
     const resolved = path.isAbsolute(dbPath)
       ? dbPath
-      : path.resolve(__dirname, '../../..', dbPath);
-    this.db = new Database(resolved, { readonly: true });
+      : path.resolve(serverRoot, dbPath);
+
+    // Ensure directory exists
+    const dir = path.dirname(resolved);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    this.db = new DatabaseClass(resolved);
+    try {
+      this.db.exec('PRAGMA journal_mode = WAL;');
+    } catch {
+      // WAL pragma might be ignored in memory
+    }
+    this._initTables();
   }
+
+  /**
+   * Initialize user and agent tables if they do not exist.
+   * @private
+   */
+  _initTables() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        api_key TEXT UNIQUE NOT NULL,
+        created_at REAL NOT NULL,
+        last_login REAL
+      );
+
+      CREATE TABLE IF NOT EXISTS user_agents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        agent_name TEXT NOT NULL,
+        api_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'OFFLINE',
+        last_seen REAL,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key);
+    `);
+  }
+
+  // ── User Authentication Methods ─────────────────────────────────
+
+  /**
+   * Create a new user record.
+   */
+  createUser({ username, email, passwordHash, apiKey }) {
+    const stmt = this.db.prepare(`
+      INSERT INTO users (username, email, password_hash, api_key, created_at, last_login)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const info = stmt.run(username, email, passwordHash, apiKey, Date.now(), Date.now());
+    return this.findUserById(info.lastInsertRowid);
+  }
+
+  /**
+   * Find user by email address (case-insensitive).
+   */
+  findUserByEmail(email) {
+    const stmt = this.db.prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)');
+    return stmt.get(email);
+  }
+
+  /**
+   * Find user by username or email.
+   */
+  findUserByUsernameOrEmail(identifier) {
+    const stmt = this.db.prepare(
+      'SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)'
+    );
+    return stmt.get(identifier, identifier);
+  }
+
+  /**
+   * Find user by primary key ID.
+   */
+  findUserById(id) {
+    const stmt = this.db.prepare('SELECT id, username, email, api_key, created_at, last_login FROM users WHERE id = ?');
+    return stmt.get(id);
+  }
+
+  /**
+   * Find user by API key.
+   */
+  findUserByApiKey(apiKey) {
+    const stmt = this.db.prepare('SELECT id, username, email, api_key, created_at, last_login FROM users WHERE api_key = ?');
+    return stmt.get(apiKey);
+  }
+
+  /**
+   * Update user last login timestamp.
+   */
+  updateLastLogin(id) {
+    const stmt = this.db.prepare('UPDATE users SET last_login = ? WHERE id = ?');
+    stmt.run(Date.now(), id);
+  }
+
+  /**
+   * Regenerate and update API key for a user.
+   */
+  updateApiKey(id, newApiKey) {
+    const stmt = this.db.prepare('UPDATE users SET api_key = ? WHERE id = ?');
+    stmt.run(newApiKey, id);
+    return this.findUserById(id);
+  }
+
+  // ── Attack & Threat Statistics Methods ──────────────────────────
 
   /**
    * Get paginated attack/prediction records.

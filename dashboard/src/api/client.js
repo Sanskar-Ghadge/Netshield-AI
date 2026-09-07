@@ -17,6 +17,41 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+// Attach Bearer token to all outgoing requests if token exists in localStorage
+client.interceptors.request.use((config) => {
+  const token = localStorage.getItem('netshield_auth_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// ── Auth API Functions ──────────────────────────────────────────
+
+/** Register a new user account. */
+export async function registerUser(username, email, password) {
+  const { data } = await client.post('/api/auth/register', { username, email, password })
+  return data
+}
+
+/** Log in to an existing account. */
+export async function loginUser(identifier, password) {
+  const { data } = await client.post('/api/auth/login', { identifier, password })
+  return data
+}
+
+/** Fetch current authenticated user profile. */
+export async function fetchCurrentUser() {
+  const { data } = await client.get('/api/auth/me')
+  return data
+}
+
+/** Regenerate user API Key. */
+export async function regenerateApiKey() {
+  const { data } = await client.post('/api/auth/regenerate-api-key')
+  return data
+}
+
 /**
  * Fetch the current system status.
  *
