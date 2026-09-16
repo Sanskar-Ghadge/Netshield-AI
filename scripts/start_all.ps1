@@ -27,16 +27,17 @@ Write-Host ""
 Write-Host "  Stopping any running NetShield processes..." -ForegroundColor DarkGray
 & (Join-Path $MyInvocation.MyCommand.Path "..\stop_all.ps1") | Out-Null
 
-# -- 0. Clean previous session database (restart values to 0) -
+# -- 0. Clean previous session attack logs (preserve users) ---
 Write-Host "[0/3] Preparing fresh monitoring session..." -ForegroundColor White
 $DbFile = Join-Path $PythonEngine "netshield.db"
-$DbWal  = Join-Path $PythonEngine "netshield.db-wal"
-$DbShm  = Join-Path $PythonEngine "netshield.db-shm"
 
-if (Test-Path $DbFile) { Remove-Item -Path $DbFile -Force -ErrorAction SilentlyContinue }
-if (Test-Path $DbWal)  { Remove-Item -Path $DbWal  -Force -ErrorAction SilentlyContinue }
-if (Test-Path $DbShm)  { Remove-Item -Path $DbShm  -Force -ErrorAction SilentlyContinue }
-Write-Host "  Session data reset -- all counters starting from 0!" -ForegroundColor Green
+if (Test-Path $DbFile) {
+    $PyDbPath = $DbFile.Replace('\', '/')
+    & python -c "import sqlite3; conn = sqlite3.connect('$PyDbPath'); conn.execute('DELETE FROM attacks'); conn.execute('DELETE FROM traffic_stats'); conn.commit(); conn.close()" 2>$null
+    Write-Host "  Session attack logs reset -- User accounts preserved!" -ForegroundColor Green
+} else {
+    Write-Host "  Initializing new database..." -ForegroundColor Green
+}
 Write-Host ""
 
 # -- 1. Start Python FastAPI Engine (port 8000) -------------

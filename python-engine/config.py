@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     metadata_path: str = ""
 
     # ── Live capture ─────────────────────────────────────────────
-    capture_enabled: bool = True
+    capture_enabled: bool = False
     capture_interface: str | None = None
     capture_bpf_filter: str | None = None
     idle_timeout_s: float = 120.0

@@ -18,6 +18,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 import SocketHandler from './utils/socketHandler.js';
 import PythonWsClient from './utils/pythonWs.js';
 import DB from './db/database.js';
@@ -27,14 +30,18 @@ import reportsRouter from './routes/reports.js';
 import chatbotRouter from './routes/chatbot.js';
 import alertsRouter from './routes/alerts.js';
 import authRouter from './routes/auth.js';
+import agentsRouter from './routes/agents.js';
 
 // ── Load environment ────────────────────────────────────────────
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const PORT = parseInt(process.env.NODE_PORT || '3001', 10);
 const PYTHON_API_URL = process.env.PYTHON_API_URL || 'http://localhost:8000';
 const PYTHON_WS_URL = process.env.PYTHON_WS_URL || 'ws://localhost:8000/ws/packets';
-const DB_PATH = process.env.DB_PATH || 'netshield.db';
+const DB_PATH = process.env.DB_PATH || path.resolve(__dirname, '../../python-engine/netshield.db');
 
 // ── Create Express app & DB ─────────────────────────────────────
 const app = express();
@@ -55,6 +62,7 @@ app.use((req, _res, next) => {
 
 // ── REST Routes ─────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
+app.use('/api/agents', agentsRouter);
 app.use('/api/attacks', attacksRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/reports', reportsRouter);
@@ -64,30 +72,38 @@ app.use('/api/alerts', alertsRouter);
 // Direct status route (not under /api/stats)
 app.get('/api/status', async (_req, res) => {
   try {
-    const resp = await axios.get(`${PYTHON_API_URL}/api/status`, { timeout: 10000 });
-    res.json(resp.data);
+    const resp = await axios.get(`${PYTHON_API_URL}/api/status`, { timeout: 3000 });
+    return res.json(resp.data);
   } catch (err) {
-    if (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET') {
-      return res.status(503).json({ error: 'Python backend unavailable' });
+    try {
+      const stats = db.getStats();
+      return res.json({
+        threat_level: 'SAFE',
+        total_packets: stats.total,
+        attack_count: stats.attacks,
+        normal_count: stats.normal,
+        uptime_seconds: process.uptime(),
+        capture_active: false,
+        model_version: 'v3',
+      });
+    } catch (fallbackErr) {
+      return res.status(503).json({ error: 'Backend unavailable' });
     }
-    const status = err.response?.status || 500;
-    const message = err.response?.data?.detail || err.message;
-    res.status(status).json({ error: message });
   }
 });
 
 // Reset session data (0 packets, 0 attacks)
 app.post('/api/reset', async (_req, res) => {
   try {
-    const resp = await axios.post(`${PYTHON_API_URL}/api/reset`, {}, { timeout: 10000 });
-    res.json(resp.data);
+    const resp = await axios.post(`${PYTHON_API_URL}/api/reset`, {}, { timeout: 3000 });
+    return res.json(resp.data);
   } catch (err) {
-    if (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET') {
-      return res.status(503).json({ error: 'Python backend unavailable' });
+    try {
+      db.db.exec('DELETE FROM attacks; DELETE FROM traffic_stats;');
+      return res.json({ status: 'ok', message: 'All packet and attack counters reset to 0' });
+    } catch (fallbackErr) {
+      return res.status(500).json({ error: 'Failed to reset' });
     }
-    const status = err.response?.status || 500;
-    const message = err.response?.data?.detail || err.message;
-    res.status(status).json({ error: message });
   }
 });
 
@@ -109,7 +125,8 @@ app.use((_req, res) => {
 });
 
 // ── Socket.io handler ───────────────────────────────────────────
-const socketHandler = new SocketHandler(server, PYTHON_API_URL);
+const socketHandler = new SocketHandler(server, PYTHON_API_URL, db);
+app.set('socketHandler', socketHandler);
 
 // ── Python WebSocket client ─────────────────────────────────────
 let pythonWsConnected = false;

@@ -70,8 +70,33 @@ class DB {
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS attacks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        attack_type TEXT NOT NULL,
+        src_ip TEXT NOT NULL,
+        dst_ip TEXT NOT NULL,
+        src_port INTEGER NOT NULL,
+        dst_port INTEGER NOT NULL,
+        protocol INTEGER NOT NULL,
+        confidence REAL NOT NULL,
+        is_attack INTEGER NOT NULL,
+        flow_id TEXT,
+        timestamp_utc REAL NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS traffic_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        total_packets INTEGER NOT NULL,
+        normal_count INTEGER NOT NULL,
+        attack_count INTEGER NOT NULL,
+        timestamp_utc REAL NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
       CREATE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key);
+      CREATE INDEX IF NOT EXISTS idx_attacks_ts ON attacks(timestamp_utc);
+      CREATE INDEX IF NOT EXISTS idx_attacks_type ON attacks(attack_type);
+      CREATE INDEX IF NOT EXISTS idx_attacks_src ON attacks(src_ip);
     `);
   }
 

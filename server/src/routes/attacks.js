@@ -25,16 +25,26 @@ router.get('/', async (req, res) => {
     if (only_attacks !== undefined) params.only_attacks = only_attacks;
     const resp = await axios.get(`${req.pythonApiUrl}/api/attacks`, {
       params,
-      timeout: 10000,
+      timeout: 3000,
     });
-    res.json(resp.data);
+    return res.json(resp.data);
   } catch (err) {
-    if (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET') {
-      return res.status(503).json({ error: 'Python backend unavailable' });
+    try {
+      const db = req.app.get('db');
+      const limit = Math.min(parseInt(req.query.limit || '50', 10), 500);
+      const offset = parseInt(req.query.offset || '0', 10);
+      const onlyAttacks = req.query.only_attacks !== 'false';
+      const rows = db.getAttacks(limit, offset, req.query.attack_type, onlyAttacks);
+      const stats = db.getStats();
+      return res.json({
+        attacks: rows,
+        total: onlyAttacks ? stats.attacks : stats.total,
+        limit,
+        offset,
+      });
+    } catch (fallbackErr) {
+      return res.status(503).json({ error: 'Backend unavailable' });
     }
-    const status = err.response?.status || 500;
-    const message = err.response?.data?.detail || err.message;
-    res.status(status).json({ error: message });
   }
 });
 

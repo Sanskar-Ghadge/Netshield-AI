@@ -14,6 +14,7 @@ import { AuthProvider } from './context/AuthContext.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
 import Dashboard from './pages/Dashboard.jsx'
+import Devices from './pages/Devices.jsx'
 import Analytics from './pages/Analytics.jsx'
 import History from './pages/History.jsx'
 import Reports from './pages/Reports.jsx'
@@ -46,6 +47,7 @@ function MainLayout() {
         <main className="soc-workspace">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/devices" element={<Devices />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/history" element={<History />} />
             <Route path="/reports" element={<Reports />} />

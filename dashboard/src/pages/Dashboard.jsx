@@ -6,6 +6,7 @@
  * @module pages/Dashboard
  */
 
+import AgentStatusCard from '../components/AgentStatusCard.jsx'
 import StatsCards from '../components/StatsCards.jsx'
 import ThreatIndicator from '../components/ThreatIndicator.jsx'
 import LiveTrafficChart from '../components/LiveTrafficChart.jsx'
@@ -20,6 +21,8 @@ export default function Dashboard() {
   return (
     <>
       <AlertBanner />
+
+      <AgentStatusCard />
 
       <StatsCards />
 

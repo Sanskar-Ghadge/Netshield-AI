@@ -48,10 +48,10 @@ foreach ($proc in $uvicorn) {
     $Killed++
 }
 
-# -- Also kill windows titled "NetShield" -------------------
-$netshieldWindows = Get-Process | Where-Object { $_.MainWindowTitle -like "*NetShield*" }
+# -- Also kill NetShield PowerShell server windows -----------
+$netshieldWindows = Get-Process -Name powershell -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like "*NetShield*" }
 foreach ($proc in $netshieldWindows) {
-    Write-Host "  Killing $($proc.ProcessName) PID $($proc.Id) ($($proc.MainWindowTitle))..." -ForegroundColor Yellow
+    Write-Host "  Killing PowerShell window PID $($proc.Id) ($($proc.MainWindowTitle))..." -ForegroundColor Yellow
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
     $Killed++
 }

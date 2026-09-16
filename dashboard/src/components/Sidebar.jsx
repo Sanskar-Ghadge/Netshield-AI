@@ -16,6 +16,7 @@ import {
   Activity,
   FileText,
   Terminal,
+  Laptop,
   Bot,
   ChevronLeft,
   ChevronRight,
@@ -52,6 +53,11 @@ export default function Sidebar({ collapsed, onToggle }) {
         <NavLink to="/" end className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
           <LayoutDashboard size={18} className="item-icon" />
           {!collapsed && <span className="item-text">Overview</span>}
+        </NavLink>
+
+        <NavLink to="/devices" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+          <Laptop size={18} className="item-icon" />
+          {!collapsed && <span className="item-text">My Devices</span>}
         </NavLink>
 
         <NavLink to="/analytics" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>

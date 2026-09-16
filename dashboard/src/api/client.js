@@ -52,6 +52,18 @@ export async function regenerateApiKey() {
   return data
 }
 
+/** Fetch all paired laptop agents for the current user. */
+export async function fetchUserAgents() {
+  const { data } = await client.get('/api/agents')
+  return data
+}
+
+/** Revoke / disconnect a paired laptop agent. */
+export async function revokeUserAgent(agentId) {
+  const { data } = await client.delete(`/api/agents/${agentId}`)
+  return data
+}
+
 /**
  * Fetch the current system status.
  *
