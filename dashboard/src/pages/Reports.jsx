@@ -92,12 +92,12 @@ export default function Reports() {
             {loading ? (
               <>
                 <Loader2 size={18} className="spin" />
-                Generating…
+                Generating & Downloading…
               </>
             ) : (
               <>
                 <Download size={18} />
-                Generate Report
+                Download PDF Report
               </>
             )}
           </button>
@@ -108,12 +108,12 @@ export default function Reports() {
                 <FileCheck size={24} style={{ color: 'var(--accent-green)' }} />
               </div>
               <div className="report-result-info">
-                <span className="report-result-title">Report Generated!</span>
+                <span className="report-result-title">Report Downloaded!</span>
                 <span className="report-result-file mono text-muted">
                   {result.filename}
                 </span>
                 <span className="report-result-path mono text-faint">
-                  {result.path}
+                  Downloaded directly to your device (Downloads folder) — no temporary files stored in project directory.
                 </span>
               </div>
             </div>

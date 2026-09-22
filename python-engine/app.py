@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -641,6 +641,37 @@ async def generate_report() -> ReportResponse:
     file_path = state.reports.generate(output_dir=state.settings.report_dir)
     filename = Path(file_path).name
     return ReportResponse(path=file_path, filename=filename)
+
+
+@app.get("/api/report")
+@app.get("/api/report/download")
+@app.post("/api/report/download")
+async def download_report_pdf() -> Response:
+    """Generate PDF report in temporary memory and stream directly to client for download.
+
+    Does NOT store or accumulate PDF files in the project folder.
+
+    Returns:
+        FastAPI Response with PDF stream and attachment header.
+    """
+    import tempfile
+
+    state: AppState = app.state.app
+    assert state.reports is not None
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        file_path = state.reports.generate(output_dir=tmp_dir)
+        filename = Path(file_path).name
+        with open(file_path, "rb") as f:
+            pdf_bytes = f.read()
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

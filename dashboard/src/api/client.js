@@ -167,13 +167,40 @@ export async function getAlertStatus() {
 }
 
 /**
- * Trigger PDF report generation.
+ * Generate and instantly download PDF security report in browser.
+ * Does not store or accumulate files in the project folder.
  *
- * @returns {Promise<object>} { path, filename }
+ * @returns {Promise<object>} { filename, downloaded }
  */
 export async function generateReport() {
-  const { data } = await client.post('/api/reports', {})
-  return data
+  const response = await client.get('/api/reports/download', {
+    responseType: 'blob',
+    timeout: 60000,
+  })
+
+  // Extract filename from Content-Disposition header if available
+  let filename = `netshield_report_${new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)}.pdf`
+  const disposition = response.headers['content-disposition']
+  if (disposition) {
+    const match = disposition.match(/filename="?([^";]+)"?/)
+    if (match && match[1]) {
+      filename = match[1]
+    }
+  }
+
+  // Trigger immediate browser file download directly into user's Downloads folder
+  const blob = new Blob([response.data], { type: 'application/pdf' })
+  const blobUrl = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.style.display = 'none'
+  a.href = blobUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000)
+
+  return { filename, downloaded: true }
 }
 
 /**
