@@ -9,7 +9,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import { useSocket } from '../hooks/useSocket.js'
-import { getStats, getStatus, resetSessionData } from '../api/client.js'
+import { getStats, getStatus, resetSessionData, startCapture, stopCapture, getCaptureStatus } from '../api/client.js'
 import { STATS_REFRESH_INTERVAL } from '../utils/constants.js'
 
 const DashboardContext = createContext(null)
@@ -43,6 +43,7 @@ export function DashboardProvider({ children }) {
   const [normalCount, setNormalCount] = useState(0)
   const [uptimeSeconds, setUptimeSeconds] = useState(0)
   const [captureActive, setCaptureActive] = useState(false)
+  const [captureLoading, setCaptureLoading] = useState(false)
   const [modelVersion, setModelVersion] = useState('')
   const [captureInterface, setCaptureInterface] = useState(null)
 
@@ -134,16 +135,27 @@ export function DashboardProvider({ children }) {
       if (data.attack_count !== undefined) setAttackCount(data.attack_count)
     }
 
+    const onCaptureStatus = (data) => {
+      if (data && data.capture_active !== undefined) {
+        setCaptureActive(data.capture_active)
+        if (data.capture_interface) {
+          setCaptureInterface(data.capture_interface)
+        }
+      }
+    }
+
     socket.on('initial:state', onInitialState)
     socket.on('packet:data', onPacketData)
     socket.on('attack:alert', onAttackAlert)
     socket.on('threat:update', onThreatUpdate)
+    socket.on('capture:status', onCaptureStatus)
 
     return () => {
       socket.off('initial:state', onInitialState)
       socket.off('packet:data', onPacketData)
       socket.off('attack:alert', onAttackAlert)
       socket.off('threat:update', onThreatUpdate)
+      socket.off('capture:status', onCaptureStatus)
     }
   }, [socket])
 
@@ -196,6 +208,24 @@ export function DashboardProvider({ children }) {
     }
   }, [refreshStats])
 
+  const toggleCapture = useCallback(async () => {
+    setCaptureLoading(true)
+    try {
+      if (captureActive) {
+        await stopCapture()
+        setCaptureActive(false)
+      } else {
+        await startCapture()
+        setCaptureActive(true)
+      }
+      await refreshStats()
+    } catch (err) {
+      console.error('[DashboardContext] Failed to toggle capture:', err.response?.data?.error || err.message)
+    } finally {
+      setCaptureLoading(false)
+    }
+  }, [captureActive, refreshStats])
+
   const value = {
     // Connection
     socketConnected: connected,
@@ -207,6 +237,8 @@ export function DashboardProvider({ children }) {
     normalCount,
     uptimeSeconds,
     captureActive,
+    captureLoading,
+    toggleCapture,
     modelVersion,
     captureInterface,
 

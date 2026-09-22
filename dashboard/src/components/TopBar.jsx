@@ -9,7 +9,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import { RotateCcw, Bot, ShieldCheck, User, LogIn, LogOut, Key, Check, Copy, ChevronDown } from 'lucide-react'
+import { RotateCcw, Bot, ShieldCheck, User, LogIn, LogOut, Key, Check, Copy, ChevronDown, Play, Square, Lock, Activity } from 'lucide-react'
 import { useDashboard } from '../context/DashboardContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import AuthModal from './AuthModal.jsx'
@@ -25,7 +25,7 @@ const BREADCRUMBS = {
 }
 
 export default function TopBar({ onOpenChat }) {
-  const { threatLevel, resetData } = useDashboard()
+  const { threatLevel, resetData, captureActive, captureLoading, toggleCapture } = useDashboard()
   const { user, isAuthenticated, logout } = useAuth()
   const location = useLocation()
 
@@ -98,6 +98,39 @@ export default function TopBar({ onOpenChat }) {
 
         {/* Control Actions */}
         <div className="topbar-actions">
+          {/* Packet Sniffing Capture Control Button */}
+          {isAuthenticated ? (
+            <button
+              className={`capture-toggle-btn ${captureActive ? 'running' : 'idle'} ${captureLoading ? 'loading' : ''}`}
+              onClick={toggleCapture}
+              disabled={captureLoading}
+              title={captureActive ? "Stop Live Packet Capture" : "Start Live Packet Capture"}
+            >
+              {captureLoading ? (
+                <RotateCcw size={14} className="spin" />
+              ) : captureActive ? (
+                <>
+                  <span className="live-pulse-dot" />
+                  <Square size={12} fill="currentColor" />
+                  <span>Stop Sniffing</span>
+                </>
+              ) : (
+                <>
+                  <Play size={12} fill="currentColor" />
+                  <span>Start Packet Capture</span>
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              className="capture-toggle-btn locked"
+              onClick={() => setAuthModalOpen(true)}
+              title="Log in or Register to start network packet capture"
+            >
+              <Lock size={13} />
+              <span>Login to Start Capture</span>
+            </button>
+          )}
           <button
             className="ai-trigger-btn"
             onClick={onOpenChat}
@@ -273,6 +306,67 @@ export default function TopBar({ onOpenChat }) {
             text-transform: uppercase;
             letter-spacing: 0.8px;
           }
+          /* Capture Toggle Button */
+          .capture-toggle-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: var(--font-heading);
+            letter-spacing: 0.3px;
+          }
+          .capture-toggle-btn.idle {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.25));
+            border: 1px solid rgba(16, 185, 129, 0.5);
+            color: #34d399;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+          }
+          .capture-toggle-btn.idle:hover {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.4));
+            border-color: #34d399;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+            transform: translateY(-1px);
+          }
+          .capture-toggle-btn.running {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.18), rgba(220, 38, 38, 0.3));
+            border: 1px solid rgba(239, 68, 68, 0.6);
+            color: #fca5a5;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.25);
+          }
+          .capture-toggle-btn.running:hover {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.45));
+            border-color: #f87171;
+            box-shadow: 0 0 22px rgba(239, 68, 68, 0.5);
+          }
+          .capture-toggle-btn.locked {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px dashed rgba(148, 163, 184, 0.3);
+            color: #94a3b8;
+          }
+          .capture-toggle-btn.locked:hover {
+            background: rgba(56, 189, 248, 0.1);
+            border-color: rgba(56, 189, 248, 0.5);
+            color: #38bdf8;
+          }
+          .live-pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ef4444;
+            box-shadow: 0 0 8px #ef4444;
+            animation: livePulse 1.4s infinite;
+          }
+          @keyframes livePulse {
+            0% { transform: scale(0.9); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.5; box-shadow: 0 0 14px #ef4444; }
+            100% { transform: scale(0.9); opacity: 1; }
+          }
+
           .topbar-clock {
             font-size: 0.82rem;
             color: var(--text-secondary);

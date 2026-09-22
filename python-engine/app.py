@@ -103,6 +103,21 @@ class HealthResponse(BaseModel):
     capture_active: bool
 
 
+class CaptureControlRequest(BaseModel):
+    """Request model for ``POST /api/capture/start``."""
+
+    interface: Optional[str] = None
+    bpf_filter: Optional[str] = None
+
+
+class CaptureStatusResponse(BaseModel):
+    """Response model for capture status and controls."""
+
+    capture_active: bool
+    capture_interface: Optional[str] = None
+    message: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Application state container
 # ---------------------------------------------------------------------------
@@ -158,6 +173,74 @@ class AppState:
         if self._start_time == 0:
             return 0.0
         return time.time() - self._start_time
+
+    def start_capture(self, iface: Optional[str] = None, bpf_filter: Optional[str] = None) -> bool:
+        """Start live packet capture and prediction consumer thread if not already running."""
+        if self.capture_active:
+            logger.info("Live capture is already running.")
+            return True
+        if not self._model_loaded:
+            logger.warning("Cannot start capture: model not loaded")
+            return False
+
+        try:
+            target_iface = iface or self.settings.capture_interface
+            target_bpf = bpf_filter if bpf_filter is not None else self.settings.capture_bpf_filter
+
+            self.capture = CaptureController(
+                idle_timeout_us=self.settings.idle_timeout_s * 1_000_000
+            )
+            self.capture_source = LiveCaptureSource(
+                iface=target_iface,
+                bpf_filter=target_bpf,
+            )
+            # Start the Scapy sniffing thread first
+            self.capture_source.start()
+            self.capture.start(self.capture_source)
+            self._stop_event.clear()
+
+            self._prediction_thread = threading.Thread(
+                target=_prediction_loop,
+                args=(self,),
+                daemon=True,
+                name="prediction-consumer",
+            )
+            self._prediction_thread.start()
+            logger.info("Live packet capture and prediction consumer started on interface: %s", target_iface or "default")
+            return True
+        except Exception as exc:
+            logger.error("Capture startup failed: %s", exc)
+            self.stop_capture()
+            return False
+
+    def stop_capture(self) -> bool:
+        """Stop live packet capture and prediction consumer thread."""
+        logger.info("Stopping live packet capture...")
+        self._stop_event.set()
+
+        if self.capture_source is not None:
+            try:
+                self.capture_source.stop()
+            except Exception as e:
+                logger.error("Error stopping capture source: %s", e)
+            self.capture_source = None
+
+        if self.capture is not None:
+            try:
+                self.capture.stop()
+            except Exception as e:
+                logger.error("Error stopping capture controller: %s", e)
+            self.capture = None
+
+        if self._prediction_thread is not None and self._prediction_thread.is_alive():
+            try:
+                self._prediction_thread.join(timeout=3.0)
+            except Exception as e:
+                logger.error("Error waiting for prediction thread: %s", e)
+            self._prediction_thread = None
+
+        logger.info("Live packet capture stopped successfully.")
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -225,57 +308,17 @@ async def lifespan(app: FastAPI):
     state.chatbot = Chatbot(state.settings.gemini_api_key, state.db)
     state.reports = ReportGenerator(state.db)
 
-    # 3. Start live capture
+    # 3. Start live capture (only if explicitly enabled in settings, otherwise idle)
     if state.settings.capture_enabled and state._model_loaded:
-        try:
-            state.capture = CaptureController(
-                idle_timeout_us=state.settings.idle_timeout_s * 1_000_000
-            )
-            state.capture_source = LiveCaptureSource(
-                iface=state.settings.capture_interface,
-                bpf_filter=state.settings.capture_bpf_filter,
-            )
-            # Start the Scapy sniffing thread FIRST so it begins filling
-            # the packet queue before the ingest thread tries to drain it.
-            state.capture_source.start()
-            state.capture.start(state.capture_source)
-            logger.info(
-                "Live capture started on: %s",
-                state.settings.capture_interface or "default",
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Capture startup failed: %s", exc)
-            state.capture = None
+        state.start_capture()
     else:
-        logger.info("Live capture disabled or model not loaded")
-
-    # 4. Start prediction consumer thread
-    if state.capture is not None:
-        state._stop_event.clear()
-        state._prediction_thread = threading.Thread(
-            target=_prediction_loop,
-            args=(state,),
-            daemon=True,
-            name="prediction-consumer",
-        )
-        state._prediction_thread.start()
-        logger.info("Prediction consumer thread started")
+        logger.info("Live capture is IDLE — waiting for manual start from dashboard")
 
     yield
 
     # --- Shutdown ---
     logger.info("NetShield AI shutting down...")
-    state._stop_event.set()
-
-    if state.capture is not None:
-        if state.capture_source is not None:
-            state.capture_source.stop()
-        state.capture.stop()
-        logger.info("Capture stopped")
-
-    if state._prediction_thread is not None:
-        state._prediction_thread.join(timeout=5.0)
-
+    state.stop_capture()
     state.db.close()
     logger.info("Database closed")
 
@@ -598,6 +641,78 @@ async def generate_report() -> ReportResponse:
     file_path = state.reports.generate(output_dir=state.settings.report_dir)
     filename = Path(file_path).name
     return ReportResponse(path=file_path, filename=filename)
+
+
+# ---------------------------------------------------------------------------
+# Capture control endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/capture/status", response_model=CaptureStatusResponse)
+async def get_capture_status() -> CaptureStatusResponse:
+    """Return whether live packet capture is currently running."""
+    state: AppState = app.state.app
+    return CaptureStatusResponse(
+        capture_active=state.capture_active,
+        capture_interface=state.settings.capture_interface,
+        message="Capture is running" if state.capture_active else "Capture is idle",
+    )
+
+
+@app.post("/api/capture/start", response_model=CaptureStatusResponse)
+async def start_capture_endpoint(
+    req: Optional[CaptureControlRequest] = None,
+) -> CaptureStatusResponse:
+    """Start live packet capture on the host machine."""
+    state: AppState = app.state.app
+    iface = req.interface if req else None
+    bpf = req.bpf_filter if req else None
+    success = state.start_capture(iface=iface, bpf_filter=bpf)
+    if not success:
+        return CaptureStatusResponse(
+            capture_active=False,
+            capture_interface=state.settings.capture_interface,
+            message="Failed to start packet capture. Verify interface permissions and model status.",
+        )
+
+    # Broadcast event to connected WebSocket clients
+    await state.ws.broadcast(
+        {
+            "event": "capture:status",
+            "data": {
+                "capture_active": True,
+                "capture_interface": iface or state.settings.capture_interface or "default",
+            },
+        }
+    )
+    return CaptureStatusResponse(
+        capture_active=True,
+        capture_interface=iface or state.settings.capture_interface,
+        message="Live packet capture started successfully",
+    )
+
+
+@app.post("/api/capture/stop", response_model=CaptureStatusResponse)
+async def stop_capture_endpoint() -> CaptureStatusResponse:
+    """Stop live packet capture on the host machine."""
+    state: AppState = app.state.app
+    state.stop_capture()
+
+    # Broadcast event to connected WebSocket clients
+    await state.ws.broadcast(
+        {
+            "event": "capture:status",
+            "data": {
+                "capture_active": False,
+                "capture_interface": state.settings.capture_interface,
+            },
+        }
+    )
+    return CaptureStatusResponse(
+        capture_active=False,
+        capture_interface=state.settings.capture_interface,
+        message="Live packet capture stopped successfully",
+    )
 
 
 # ---------------------------------------------------------------------------

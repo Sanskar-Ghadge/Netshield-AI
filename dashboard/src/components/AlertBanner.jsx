@@ -65,6 +65,9 @@ export default function AlertBanner() {
     <div className="alert-banner" onClick={dismiss}>
       <AlertOctagon size={22} className="alert-icon" />
       <span className="alert-text">
+        {(current.hostname || ctx.hostname) && (
+          <span className="alert-device-tag">[Device: {current.hostname || ctx.hostname}] </span>
+        )}
         <strong>{current.label}</strong> detected from{' '}
         <span className="mono">{src}</span>
         {' → '}
@@ -76,6 +79,17 @@ export default function AlertBanner() {
       <span className="alert-hint">Click to dismiss</span>
 
       <style>{`
+        .alert-device-tag {
+          background: rgba(0, 0, 0, 0.35);
+          border: 1px solid rgba(255, 255, 255, 0.4);
+          padding: 2px 7px;
+          border-radius: 4px;
+          font-family: var(--font-mono);
+          font-weight: 700;
+          font-size: 0.78rem;
+          margin-right: 6px;
+          color: #fff;
+        }
         .alert-banner {
           position: fixed;
           top: var(--header-height);

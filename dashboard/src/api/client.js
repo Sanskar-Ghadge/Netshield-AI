@@ -75,6 +75,30 @@ export async function getStatus() {
 }
 
 /**
+ * Fetch current packet capture engine status.
+ */
+export async function getCaptureStatus() {
+  const { data } = await client.get('/api/capture/status')
+  return data
+}
+
+/**
+ * Start live packet capture (requires authentication).
+ */
+export async function startCapture(options = {}) {
+  const { data } = await client.post('/api/capture/start', options)
+  return data
+}
+
+/**
+ * Stop live packet capture (requires authentication).
+ */
+export async function stopCapture() {
+  const { data } = await client.post('/api/capture/stop', {})
+  return data
+}
+
+/**
  * Fetch aggregate statistics including attack distribution.
  *
  * @returns {Promise<object>} Stats response.

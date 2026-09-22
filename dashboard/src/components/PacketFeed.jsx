@@ -71,6 +71,9 @@ export default function PacketFeed() {
                   {pkt.label}
                 </span>
                 <span className="feed-ip mono">
+                  {(pkt.hostname || ctx.hostname) && (
+                    <span className="feed-device-tag">[{pkt.hostname || ctx.hostname}] </span>
+                  )}
                   {formatEndpoint(ctx.src_ip, ctx.src_port)}
                   <span className="arrow"> → </span>
                   {formatEndpoint(ctx.dst_ip, ctx.dst_port)}
@@ -182,6 +185,16 @@ export default function PacketFeed() {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        .feed-device-tag {
+          color: var(--accent-cyan);
+          font-weight: 700;
+          font-size: 0.68rem;
+          background: rgba(0, 240, 255, 0.1);
+          border: 1px solid rgba(0, 240, 255, 0.25);
+          padding: 1px 4px;
+          border-radius: 4px;
+          margin-right: 4px;
         }
         .arrow {
           color: var(--accent-cyan);

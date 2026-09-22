@@ -229,6 +229,15 @@ class SocketHandler {
   }
 
   /**
+   * Broadcast capture status change to all connected clients.
+   *
+   * @param {object} data - { capture_active: boolean, capture_interface: string }
+   */
+  broadcastCaptureStatus(data) {
+    this.io.emit('capture:status', data);
+  }
+
+  /**
    * Get the number of connected browser clients.
    *
    * @returns {number} Connected client count.

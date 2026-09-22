@@ -29,7 +29,7 @@ import statsRouter from './routes/stats.js';
 import reportsRouter from './routes/reports.js';
 import chatbotRouter from './routes/chatbot.js';
 import alertsRouter from './routes/alerts.js';
-import authRouter from './routes/auth.js';
+import authRouter, { authenticateToken } from './routes/auth.js';
 import agentsRouter from './routes/agents.js';
 
 // ── Load environment ────────────────────────────────────────────
@@ -92,6 +92,53 @@ app.get('/api/status', async (_req, res) => {
   }
 });
 
+// ── Capture Control Endpoints ────────────────────────────────────
+// Status check is public so UI can read initial state
+app.get('/api/capture/status', async (_req, res) => {
+  try {
+    const resp = await axios.get(`${PYTHON_API_URL}/api/capture/status`, { timeout: 3000 });
+    return res.json(resp.data);
+  } catch (err) {
+    return res.json({ capture_active: false, capture_interface: null, message: 'Engine offline' });
+  }
+});
+
+// Starting and stopping packet capture REQUIRES authenticated user login
+app.post('/api/capture/start', authenticateToken, async (req, res) => {
+  try {
+    const resp = await axios.post(`${PYTHON_API_URL}/api/capture/start`, req.body, { timeout: 10000 });
+    const ioHandler = req.app.get('socketHandler');
+    if (ioHandler) {
+      ioHandler.broadcastCaptureStatus({
+        capture_active: true,
+        capture_interface: resp.data.capture_interface,
+      });
+    }
+    return res.json(resp.data);
+  } catch (err) {
+    console.error('[CaptureStart] Error:', err.message);
+    return res.status(500).json({
+      error: err.response?.data?.detail || err.message || 'Failed to start capture',
+    });
+  }
+});
+
+app.post('/api/capture/stop', authenticateToken, async (req, res) => {
+  try {
+    const resp = await axios.post(`${PYTHON_API_URL}/api/capture/stop`, {}, { timeout: 10000 });
+    const ioHandler = req.app.get('socketHandler');
+    if (ioHandler) {
+      ioHandler.broadcastCaptureStatus({ capture_active: false });
+    }
+    return res.json(resp.data);
+  } catch (err) {
+    console.error('[CaptureStop] Error:', err.message);
+    return res.status(500).json({
+      error: err.response?.data?.detail || err.message || 'Failed to stop capture',
+    });
+  }
+});
+
 // Reset session data (0 packets, 0 attacks)
 app.post('/api/reset', async (_req, res) => {
   try {
@@ -137,6 +184,13 @@ const pythonWs = new PythonWsClient(
     // ── Envelope events from Python's ws_manager ───────────
     if (message.event === 'attack:alert' && message.data) {
       socketHandler.broadcastAttackAlert(message.data);
+      return;
+    }
+
+    if (message.event === 'capture:status' || message.event === 'capture_status') {
+      if (socketHandler) {
+        socketHandler.broadcastCaptureStatus(message.data);
+      }
       return;
     }
 
