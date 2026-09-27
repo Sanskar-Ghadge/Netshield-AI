@@ -42,9 +42,9 @@ export default function SystemInfo() {
           color={captureActive ? 'var(--accent-green)' : 'var(--text-tertiary)'}
         />
         <InfoRow
-          icon={<Cpu size={15} />}
-          label="ML Engine Model"
-          value={modelVersion || 'xgboost_cicids2017_v3.pkl'}
+          icon={<ShieldCheck size={15} />}
+          label="Defense Engine"
+          value="Autonomous Flow Guard (Live)"
           color="var(--accent-cyan)"
         />
         <InfoRow

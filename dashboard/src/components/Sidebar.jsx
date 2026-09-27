@@ -11,6 +11,7 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Shield,
+  Home,
   LayoutDashboard,
   PieChart,
   Activity,
@@ -48,9 +49,16 @@ export default function Sidebar({ collapsed, onToggle }) {
 
       {/* Navigation Menu */}
       <nav className="sidebar-menu">
-        <div className="menu-label">{!collapsed ? 'SOC Workspaces' : '•'}</div>
+        <div className="menu-label">{!collapsed ? 'Navigation' : '•'}</div>
 
         <NavLink to="/" end className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
+          <Home size={18} className="item-icon" />
+          {!collapsed && <span className="item-text">Project Home</span>}
+        </NavLink>
+
+        <div className="menu-label" style={{ marginTop: 12 }}>{!collapsed ? 'SOC Workspaces' : '•'}</div>
+
+        <NavLink to="/dashboard" className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}>
           <LayoutDashboard size={18} className="item-icon" />
           {!collapsed && <span className="item-text">Overview</span>}
         </NavLink>

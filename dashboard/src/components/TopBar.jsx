@@ -16,7 +16,8 @@ import AuthModal from './AuthModal.jsx'
 import { THREAT_COLORS, THREAT_BG_COLORS } from '../utils/constants.js'
 
 const BREADCRUMBS = {
-  '/': { title: 'SOC Operations Dashboard', subtitle: 'Real-Time Network Intrusion Monitoring' },
+  '/': { title: 'Project Overview', subtitle: 'Introduction & Setup Guide' },
+  '/dashboard': { title: 'SOC Operations Dashboard', subtitle: 'Real-Time Network Intrusion Monitoring' },
   '/devices': { title: 'Paired Laptop Devices', subtitle: 'Manage Connected Laptops & Agent Installer' },
   '/analytics': { title: 'Security Analytics & Forensics', subtitle: 'Attack Distribution, Trends & Top Attackers' },
   '/history': { title: 'Attack Log History', subtitle: 'Paginated Audit Trail of Detected Threats' },

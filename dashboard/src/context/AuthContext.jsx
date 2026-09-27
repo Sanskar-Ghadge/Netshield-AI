@@ -14,14 +14,31 @@ const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
-  const [token, setToken] = useState(() => localStorage.getItem('netshield_auth_token'))
+  const [token, setToken] = useState(() => {
+    try {
+      // Proactively clear any stale legacy token in localStorage so old accounts never auto-load
+      localStorage.removeItem('netshield_auth_token')
+      return sessionStorage.getItem('netshield_auth_token')
+    } catch {
+      return null
+    }
+  })
   const [loading, setLoading] = useState(true)
 
-  // Verify saved token on app mount
+  // Verify saved session token on app mount (only if active in current browser session)
   useEffect(() => {
+    // Ensure any legacy localStorage token is purged
+    try {
+      localStorage.removeItem('netshield_auth_token')
+    } catch {
+      // Ignore
+    }
+
     async function restoreSession() {
-      const savedToken = localStorage.getItem('netshield_auth_token')
+      const savedToken = sessionStorage.getItem('netshield_auth_token')
       if (!savedToken) {
+        setUser(null)
+        setToken(null)
         setLoading(false)
         return
       }
@@ -32,7 +49,7 @@ export function AuthProvider({ children }) {
         setToken(savedToken)
       } catch (err) {
         console.warn('[AuthContext] Session expired or server unavailable:', err)
-        localStorage.removeItem('netshield_auth_token')
+        sessionStorage.removeItem('netshield_auth_token')
         setUser(null)
         setToken(null)
       } finally {
@@ -46,7 +63,7 @@ export function AuthProvider({ children }) {
   // Login handler
   const login = async (identifier, password) => {
     const data = await loginUser(identifier, password)
-    localStorage.setItem('netshield_auth_token', data.token)
+    sessionStorage.setItem('netshield_auth_token', data.token)
     setToken(data.token)
     setUser(data.user)
     return data
@@ -55,7 +72,7 @@ export function AuthProvider({ children }) {
   // Register handler
   const register = async (username, email, password) => {
     const data = await registerUser(username, email, password)
-    localStorage.setItem('netshield_auth_token', data.token)
+    sessionStorage.setItem('netshield_auth_token', data.token)
     setToken(data.token)
     setUser(data.user)
     return data
@@ -63,7 +80,12 @@ export function AuthProvider({ children }) {
 
   // Logout handler
   const logout = () => {
-    localStorage.removeItem('netshield_auth_token')
+    try {
+      localStorage.removeItem('netshield_auth_token')
+      sessionStorage.removeItem('netshield_auth_token')
+    } catch {
+      // Ignore
+    }
     setToken(null)
     setUser(null)
   }

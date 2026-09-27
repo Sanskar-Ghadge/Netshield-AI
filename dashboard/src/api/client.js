@@ -17,11 +17,15 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach Bearer token to all outgoing requests if token exists in localStorage
+// Attach Bearer token to all outgoing requests if token exists in sessionStorage
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('netshield_auth_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  try {
+    const token = sessionStorage.getItem('netshield_auth_token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+  } catch {
+    // Ignore storage access errors
   }
   return config
 })

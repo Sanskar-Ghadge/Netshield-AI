@@ -7,13 +7,18 @@
  * @module components/AuthModal
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Shield, Lock, Mail, User, Key, Eye, EyeOff, Check, AlertCircle, Copy, ArrowRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 
-export default function AuthModal({ isOpen, onClose }) {
+export default function AuthModal({ isOpen, onClose, initialTab = 'login', onSuccess }) {
   const { login, register } = useAuth()
-  const [tab, setTab] = useState('login') // 'login' | 'register'
+  const [tab, setTab] = useState(initialTab) // 'login' | 'register'
+  
+  // Sync tab with initialTab when opening
+  useEffect(() => {
+    if (initialTab) setTab(initialTab)
+  }, [initialTab, isOpen])
   
   // Form fields
   const [username, setUsername] = useState('')
@@ -49,6 +54,7 @@ export default function AuthModal({ isOpen, onClose }) {
       if (tab === 'login') {
         await login(email || username, password)
         onClose()
+        if (onSuccess) onSuccess()
       } else {
         const data = await register(username, email, password)
         setRegisteredApiKey(data.user.apiKey)
@@ -107,7 +113,10 @@ export default function AuthModal({ isOpen, onClose }) {
               </div>
             </div>
 
-            <button className="auth-primary-btn margin-top" onClick={onClose}>
+            <button className="auth-primary-btn margin-top" onClick={() => {
+              onClose()
+              if (onSuccess) onSuccess()
+            }}>
               Go to Dashboard <ArrowRight size={16} />
             </button>
           </div>

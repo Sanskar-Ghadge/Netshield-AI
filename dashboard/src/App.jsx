@@ -13,6 +13,7 @@ import { DashboardProvider, useDashboard } from './context/DashboardContext.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import TopBar from './components/TopBar.jsx'
+import Home from './pages/Home.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Devices from './pages/Devices.jsx'
 import Analytics from './pages/Analytics.jsx'
@@ -33,7 +34,7 @@ function DisconnectBanner() {
   )
 }
 
-function MainLayout() {
+function MainLayout({ children }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
 
@@ -45,14 +46,7 @@ function MainLayout() {
       <div className="soc-main-shell">
         <TopBar onOpenChat={() => setChatOpen(true)} />
         <main className="soc-workspace">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/devices" element={<Devices />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/history" element={<History />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/status" element={<SystemStatus />} />
-          </Routes>
+          {children}
         </main>
       </div>
 
@@ -94,7 +88,18 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <DashboardProvider>
-          <MainLayout />
+          <Routes>
+            {/* Standalone Home Landing Page — First page on project start */}
+            <Route path="/" element={<Home />} />
+
+            {/* Enterprise SOC Operations Workspaces */}
+            <Route path="/dashboard" element={<MainLayout><Dashboard /></MainLayout>} />
+            <Route path="/devices" element={<MainLayout><Devices /></MainLayout>} />
+            <Route path="/analytics" element={<MainLayout><Analytics /></MainLayout>} />
+            <Route path="/history" element={<MainLayout><History /></MainLayout>} />
+            <Route path="/reports" element={<MainLayout><Reports /></MainLayout>} />
+            <Route path="/status" element={<MainLayout><SystemStatus /></MainLayout>} />
+          </Routes>
         </DashboardProvider>
       </AuthProvider>
     </BrowserRouter>
