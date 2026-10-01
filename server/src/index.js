@@ -103,8 +103,8 @@ app.get('/api/capture/status', async (_req, res) => {
   }
 });
 
-// Starting and stopping packet capture REQUIRES authenticated user login
-app.post('/api/capture/start', authenticateToken, async (req, res) => {
+// Starting and stopping packet capture — no auth required for local use
+app.post('/api/capture/start', async (req, res) => {
   try {
     const resp = await axios.post(`${PYTHON_API_URL}/api/capture/start`, req.body, { timeout: 10000 });
     const ioHandler = req.app.get('socketHandler');
@@ -123,7 +123,7 @@ app.post('/api/capture/start', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/capture/stop', authenticateToken, async (req, res) => {
+app.post('/api/capture/stop', async (req, res) => {
   try {
     const resp = await axios.post(`${PYTHON_API_URL}/api/capture/stop`, {}, { timeout: 10000 });
     const ioHandler = req.app.get('socketHandler');

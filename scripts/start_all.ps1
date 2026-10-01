@@ -43,7 +43,7 @@ Write-Host ""
 # -- 1. Start Python FastAPI Engine (port 8000) -------------
 Write-Host "[1/3] Starting Python FastAPI engine on port 8000..." -ForegroundColor White
 
-$PythonCmd = "`$host.UI.RawUI.WindowTitle = 'NetShield -- Python Engine'; cd '$PythonEngine'; .\.venv\Scripts\python.exe -m uvicorn app:app --host 0.0.0.0 --port 8000"
+$PythonCmd = "`$host.UI.RawUI.WindowTitle = 'NetShield -- Python Engine'; cd '$PythonEngine'; py -m uvicorn app:app --host 0.0.0.0 --port 8000"
 Start-Process -FilePath "powershell" -ArgumentList "-NoExit", "-Command", $PythonCmd
 Write-Host "  Python engine starting..." -ForegroundColor Green
 

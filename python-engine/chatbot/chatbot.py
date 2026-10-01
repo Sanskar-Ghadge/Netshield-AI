@@ -151,30 +151,9 @@ class Chatbot:
 
             genai.configure(api_key=api_key)
 
-            # Probe each model — keep all that work, not just the first.
             for model_name in _GEMINI_MODELS:
-                try:
-                    candidate = genai.GenerativeModel(model_name)
-                    _probe = candidate.generate_content("Hi")
-                    self._models.append(candidate)
-                    self._model_names.append(model_name)
-                    logger.info("Model %s: OK", model_name)
-                except Exception as model_exc:  # noqa: BLE001
-                    is_rl = _is_rate_limit_error(model_exc)
-                    level = logging.WARNING if is_rl else logging.DEBUG
-                    logger.log(
-                        level,
-                        "Model %s %s: %s",
-                        model_name,
-                        "rate-limited" if is_rl else "unavailable",
-                        model_exc,
-                    )
-                    # If rate-limited, still add it to the pool — it may
-                    # become available later.
-                    if is_rl:
-                        self._models.append(candidate)
-                        self._model_names.append(model_name)
-                    continue
+                self._models.append(genai.GenerativeModel(model_name))
+                self._model_names.append(model_name)
 
             if self._models:
                 self._primary_index = 0
